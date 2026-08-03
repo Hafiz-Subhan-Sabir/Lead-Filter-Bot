@@ -19,8 +19,8 @@
           <p class="eyebrow">Lead Filter Bot</p>
           <h1>Find the right posts. Skip the noise.</h1>
           <p class="sub">
-            Pick a platform, paste posts with optional links, and keep only what
-            matches what you’re looking for.
+            Platform-aware filtering with contact extraction, time windows, and
+            a detail inbox for selected leads.
           </p>
         </div>
         <div class="header-side">
@@ -37,7 +37,7 @@
             <span class="step-num">1</span>
             <div>
               <h2>Where are you looking right now?</h2>
-              <p class="step-help">Choose the platform these posts came from.</p>
+              <p class="step-help">AI uses this platform context for better accuracy.</p>
             </div>
           </div>
 
@@ -57,7 +57,7 @@
             <span class="step-num">2</span>
             <div>
               <h2>What do you want to find?</h2>
-              <p class="step-help">Describe your ideal lead in plain English.</p>
+              <p class="step-help">Intent + advanced filters (time, contact requirements).</p>
             </div>
           </div>
 
@@ -75,36 +75,57 @@
             <label class="check"><input type="checkbox" id="want_no_website" /> No website</label>
           </div>
 
-          <label for="min_confidence">Min confidence <strong id="confLabel">0.70</strong></label>
-          <input id="min_confidence" type="range" min="0.5" max="0.95" step="0.05" value="0.7" />
+          <div class="adv-grid">
+            <div>
+              <label for="min_confidence">Min confidence <strong id="confLabel">0.70</strong></label>
+              <input id="min_confidence" type="range" min="0.5" max="0.95" step="0.05" value="0.7" />
+            </div>
+            <div>
+              <label for="max_hours">Posted within</label>
+              <select id="max_hours">
+                <option value="">Any time</option>
+                <option value="6">Last 6 hours</option>
+                <option value="12">Last 12 hours</option>
+                <option value="24">Last 24 hours</option>
+                <option value="72">Last 3 days</option>
+                <option value="168">Last 7 days</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="flags contact-flags">
+            <label class="check"><input type="checkbox" id="require_email" /> Must have email</label>
+            <label class="check"><input type="checkbox" id="require_phone" /> Must have phone</label>
+            <label class="check"><input type="checkbox" id="require_name" /> Must have name</label>
+          </div>
 
           <div class="step">
             <span class="step-num">3</span>
             <div>
               <h2>Paste posts</h2>
               <p class="step-help">
-                Separate posts with a blank line. Optional: put the post URL on the
-                last line so you can open it later.
+                Blank line between posts. Optional URL on last line. Optional time
+                prefix like <code>6h:</code> or <code>[12h]</code>. Contact info in
+                the text is extracted automatically.
               </p>
             </div>
           </div>
 
           <label for="paste">Messages</label>
-          <textarea
-            id="paste"
-            rows="12"
-            placeholder="Post text here...
-https://example.com/post-link
+          <textarea id="paste" rows="11" placeholder="6h: Post text...
+https://link
 
-Next post text...
-https://example.com/another"
-          ></textarea>
+Next post..."></textarea>
 
           <div class="actions">
             <button id="runBtn" type="button">Filter messages</button>
-            <p class="hint" id="hint">AI will sort matches vs rejected.</p>
+            <p class="hint" id="hint">AI classifies, extracts contacts, applies filters.</p>
           </div>
           <p class="error" id="error" hidden></p>
+          <p class="limit-note">
+            Contact info is extracted from the pasted text (email/phone/name).
+            Platforms do not allow private uploader scraping from this app.
+          </p>
         </section>
 
         <section class="panel results-panel">
@@ -114,6 +135,18 @@ https://example.com/another"
               <p class="meta" id="summary">Run a filter to see matches here.</p>
             </div>
             <div class="source-tag" id="sourceTag">Platform: LinkedIn</div>
+          </div>
+
+          <div class="toolbar">
+            <label class="check">
+              <input type="checkbox" id="selectAll" /> Select all visible
+            </label>
+            <button type="button" class="ghost-btn" id="inspectBtn" disabled>
+              Inspect selected
+            </button>
+            <button type="button" class="ghost-btn" id="copyEmailsBtn" disabled>
+              Copy emails
+            </button>
           </div>
 
           <div class="tabs">
@@ -130,6 +163,17 @@ https://example.com/another"
         </section>
       </main>
     </div>
+
+    <aside class="drawer" id="drawer" hidden>
+      <div class="drawer-backdrop" id="drawerBackdrop"></div>
+      <div class="drawer-panel" role="dialog" aria-labelledby="drawerTitle">
+        <div class="drawer-head">
+          <h2 id="drawerTitle">Selected leads</h2>
+          <button type="button" class="ghost-btn" id="closeDrawer">Close</button>
+        </div>
+        <div id="drawerBody" class="drawer-body"></div>
+      </div>
+    </aside>
 
     <script src="/static/app.js"></script>
   </body>

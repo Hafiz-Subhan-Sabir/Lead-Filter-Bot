@@ -14,6 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
 from database import SessionLocal, init_db  # noqa: E402
+from routers.filter import decision_to_result, passes_soft_filters  # noqa: E402
 from schemas import FilterRequest, ProfileCreate  # noqa: E402
 from services import storage  # noqa: E402
 from services.ai_filter import classify_message  # noqa: E402
@@ -114,6 +115,7 @@ def run_filter():
         chunks = split_into_items(body.text)
         matches = []
         rejected = []
+        filtered_out = 0
 
         for chunk in chunks:
             item = storage.save_item(
@@ -122,25 +124,37 @@ def run_filter():
                 source=body.source,
                 url=chunk.url,
             )
-            decision = classify_message(profile_data, chunk.text)
+            decision = classify_message(
+                profile_data,
+                chunk.text,
+                platform=body.source,
+            )
+            if (
+                chunk.hours_ago_hint is not None
+                and decision.extracted.hours_ago_estimate is None
+            ):
+                decision.extracted.hours_ago_estimate = chunk.hours_ago_hint
+
             result = storage.save_result(db, item, profile, decision)
-            out = {
-                "item_id": item.id,
-                "raw_text": item.raw_text,
-                "source": item.source,
-                "url": item.url,
-                "is_match": result.is_match,
-                "category": result.category,
-                "work_type": result.work_type,
-                "company_type": result.company_type,
-                "is_lead": result.is_lead,
-                "confidence": result.confidence,
-                "reason": result.reason,
-            }
+            out = decision_to_result(
+                item_id=item.id,
+                raw_text=item.raw_text,
+                source=item.source,
+                url=item.url,
+                decision=decision,
+                is_match=result.is_match,
+                hours_hint=chunk.hours_ago_hint,
+            )
+
+            if not passes_soft_filters(body, out):
+                filtered_out += 1
+                continue
+
+            payload = out.model_dump()
             if result.is_match:
-                matches.append(out)
+                matches.append(payload)
             else:
-                rejected.append(out)
+                rejected.append(payload)
 
         return jsonify(
             {
@@ -148,11 +162,11 @@ def run_filter():
                 "source": body.source,
                 "matches": matches,
                 "rejected": rejected,
+                "filtered_out": filtered_out,
             }
         )
     finally:
         db.close()
 
 
-# PythonAnywhere expects this name
 application = app
