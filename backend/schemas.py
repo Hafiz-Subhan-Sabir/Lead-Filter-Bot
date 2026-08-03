@@ -47,6 +47,8 @@ class AIDecision(BaseModel):
 class ResultOut(BaseModel):
     item_id: int
     raw_text: str
+    source: str = "paste"
+    url: str | None = None
     is_match: bool
     category: str | None
     work_type: str | None
@@ -58,5 +60,6 @@ class ResultOut(BaseModel):
 
 class FilterResponse(BaseModel):
     total_items: int
+    source: str = "paste"
     matches: list[ResultOut]
     rejected: list[ResultOut]

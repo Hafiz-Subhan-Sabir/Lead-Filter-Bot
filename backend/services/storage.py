@@ -16,8 +16,13 @@ def get_profile(db: Session, profile_id: int) -> FilterProfile | None:
     return db.get(FilterProfile, profile_id)
 
 
-def save_item(db: Session, text: str, source: str = "paste") -> RawItem:
-    item = RawItem(source=source, raw_text=text)
+def save_item(
+    db: Session,
+    text: str,
+    source: str = "paste",
+    url: str | None = None,
+) -> RawItem:
+    item = RawItem(source=source, raw_text=text, url=url)
     db.add(item)
     db.commit()
     db.refresh(item)

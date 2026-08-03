@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/static/styles.css" />
@@ -15,77 +15,105 @@
   <body>
     <div class="page">
       <header class="header">
-        <div>
+        <div class="brand-block">
           <p class="eyebrow">Lead Filter Bot</p>
-          <h1>Paste posts. Keep only what matches.</h1>
+          <h1>Find the right posts. Skip the noise.</h1>
           <p class="sub">
-            Tell the bot what you want, paste messages from any app (blank line
-            between each), and get matches vs rejected.
+            Pick a platform, paste posts with optional links, and keep only what
+            matches what you’re looking for.
           </p>
         </div>
-        <div class="status" id="apiStatus" aria-live="polite">Checking API…</div>
+        <div class="header-side">
+          <div class="status" id="apiStatus" aria-live="polite">Checking API…</div>
+          <div class="looking-pill" id="lookingPill">
+            Looking on: <strong id="lookingLabel">LinkedIn</strong>
+          </div>
+        </div>
       </header>
 
       <main class="layout">
-        <section class="panel">
-          <h2>What are you looking for?</h2>
+        <section class="panel form-panel">
+          <div class="step">
+            <span class="step-num">1</span>
+            <div>
+              <h2>Where are you looking right now?</h2>
+              <p class="step-help">Choose the platform these posts came from.</p>
+            </div>
+          </div>
+
+          <div class="platform-grid" id="platformGrid" role="radiogroup" aria-label="Platform">
+            <button type="button" class="platform-chip active" data-platform="linkedin">LinkedIn</button>
+            <button type="button" class="platform-chip" data-platform="whatsapp">WhatsApp</button>
+            <button type="button" class="platform-chip" data-platform="upwork">Upwork</button>
+            <button type="button" class="platform-chip" data-platform="fiverr">Fiverr</button>
+            <button type="button" class="platform-chip" data-platform="facebook">Facebook</button>
+            <button type="button" class="platform-chip" data-platform="instagram">Instagram</button>
+            <button type="button" class="platform-chip" data-platform="google_maps">Google Maps</button>
+            <button type="button" class="platform-chip" data-platform="other">Other / Paste</button>
+          </div>
+          <input type="hidden" id="platform" value="linkedin" />
+
+          <div class="step">
+            <span class="step-num">2</span>
+            <div>
+              <h2>What do you want to find?</h2>
+              <p class="step-help">Describe your ideal lead in plain English.</p>
+            </div>
+          </div>
 
           <label for="name">Profile name</label>
           <input id="name" type="text" value="Dev hiring remote" />
 
-          <label for="intent">Intent (plain English)</label>
-          <textarea id="intent" rows="4">
-People looking to hire developers or freelancers for software work, preferably remote, startups welcome</textarea
-          >
+          <label for="intent">Intent</label>
+          <textarea id="intent" rows="3">People looking to hire developers or freelancers for software work, preferably remote, startups welcome</textarea>
 
           <div class="flags">
-            <label class="check"
-              ><input type="checkbox" id="want_remote" checked /> Remote</label
-            >
-            <label class="check"
-              ><input type="checkbox" id="want_onsite" /> Onsite</label
-            >
-            <label class="check"
-              ><input type="checkbox" id="want_hiring" checked /> Hiring</label
-            >
-            <label class="check"
-              ><input type="checkbox" id="want_startups" checked /> Startups</label
-            >
-            <label class="check"
-              ><input type="checkbox" id="want_no_website" /> No website</label
-            >
+            <label class="check"><input type="checkbox" id="want_remote" checked /> Remote</label>
+            <label class="check"><input type="checkbox" id="want_onsite" /> Onsite</label>
+            <label class="check"><input type="checkbox" id="want_hiring" checked /> Hiring</label>
+            <label class="check"><input type="checkbox" id="want_startups" checked /> Startups</label>
+            <label class="check"><input type="checkbox" id="want_no_website" /> No website</label>
           </div>
 
-          <label for="min_confidence"
-            >Min confidence <span id="confLabel">0.70</span></label
-          >
-          <input
-            id="min_confidence"
-            type="range"
-            min="0.5"
-            max="0.95"
-            step="0.05"
-            value="0.7"
-          />
+          <label for="min_confidence">Min confidence <strong id="confLabel">0.70</strong></label>
+          <input id="min_confidence" type="range" min="0.5" max="0.95" step="0.05" value="0.7" />
 
-          <label for="paste">Paste messages (blank line between each)</label>
-          <textarea id="paste" rows="12" placeholder="Message one here...
+          <div class="step">
+            <span class="step-num">3</span>
+            <div>
+              <h2>Paste posts</h2>
+              <p class="step-help">
+                Separate posts with a blank line. Optional: put the post URL on the
+                last line so you can open it later.
+              </p>
+            </div>
+          </div>
 
-Message two here...
+          <label for="paste">Messages</label>
+          <textarea
+            id="paste"
+            rows="12"
+            placeholder="Post text here...
+https://example.com/post-link
 
-Message three here..."></textarea>
+Next post text...
+https://example.com/another"
+          ></textarea>
 
           <div class="actions">
             <button id="runBtn" type="button">Filter messages</button>
-            <p class="hint" id="hint">Creates a profile, then runs the AI filter.</p>
+            <p class="hint" id="hint">AI will sort matches vs rejected.</p>
           </div>
           <p class="error" id="error" hidden></p>
         </section>
 
         <section class="panel results-panel">
           <div class="results-head">
-            <h2>Results</h2>
-            <p class="meta" id="summary">Run a filter to see matches here.</p>
+            <div>
+              <h2>Results</h2>
+              <p class="meta" id="summary">Run a filter to see matches here.</p>
+            </div>
+            <div class="source-tag" id="sourceTag">Platform: LinkedIn</div>
           </div>
 
           <div class="tabs">

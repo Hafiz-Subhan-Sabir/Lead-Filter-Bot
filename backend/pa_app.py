@@ -116,12 +116,19 @@ def run_filter():
         rejected = []
 
         for chunk in chunks:
-            item = storage.save_item(db, chunk, source=body.source)
-            decision = classify_message(profile_data, chunk)
+            item = storage.save_item(
+                db,
+                chunk.text,
+                source=body.source,
+                url=chunk.url,
+            )
+            decision = classify_message(profile_data, chunk.text)
             result = storage.save_result(db, item, profile, decision)
             out = {
                 "item_id": item.id,
                 "raw_text": item.raw_text,
+                "source": item.source,
+                "url": item.url,
                 "is_match": result.is_match,
                 "category": result.category,
                 "work_type": result.work_type,
@@ -138,6 +145,7 @@ def run_filter():
         return jsonify(
             {
                 "total_items": len(chunks),
+                "source": body.source,
                 "matches": matches,
                 "rejected": rejected,
             }
