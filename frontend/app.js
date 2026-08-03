@@ -9,15 +9,15 @@ const PLATFORM_LABELS = {
   facebook: "Facebook",
   instagram: "Instagram",
   google_maps: "Google Maps",
-  other: "Other / Paste",
+  other: "Other / Web",
 };
 
 const STAGES = [
-  { id: "profile", title: "Saving your intent", sub: "Creating filter profile…", pct: 12 },
-  { id: "scan", title: "Reading pasted posts", sub: "Splitting messages & links…", pct: 28 },
-  { id: "ai", title: "AI matching & contacts", sub: "Classifying each post…", pct: 62 },
-  { id: "filters", title: "Applying filters", sub: "Time + contact rules…", pct: 82 },
-  { id: "rank", title: "Ranking genuine leads", sub: "Sorting final results…", pct: 96 },
+  { id: "profile", title: "Saving your intent", sub: "Creating search profile…", pct: 12 },
+  { id: "search", title: "Searching platforms", sub: "Looking through public listings…", pct: 40 },
+  { id: "ai", title: "AI matching & contacts", sub: "Checking genuineness…", pct: 70 },
+  { id: "filters", title: "Applying filters", sub: "Time + contact rules…", pct: 88 },
+  { id: "rank", title: "Ranking genuine leads", sub: "Preparing final results…", pct: 97 },
 ];
 
 let itemIndex = {};
@@ -110,9 +110,6 @@ async function readError(res) {
     if (typeof data.detail === "string") return data.detail;
     return JSON.stringify(data.detail || data);
   } catch {
-    if (text.includes("Internal Server Error")) {
-      return "Server error 500. Check API key / server logs, then retry.";
-    }
     return text.slice(0, 300) || `HTTP ${res.status}`;
   }
 }
@@ -122,7 +119,6 @@ function setStage(stageId) {
   loadingTitle.textContent = stage.title;
   loadingSub.textContent = stage.sub;
   progressBar.style.width = `${stage.pct}%`;
-
   document.querySelectorAll("#stageList li").forEach((li) => {
     const id = li.dataset.stage;
     li.classList.remove("active", "done");
@@ -139,14 +135,12 @@ function startLoadingVisual() {
   loadingPanel.hidden = false;
   progressBar.style.width = "8%";
   setStage("profile");
-
   let i = 0;
   clearInterval(stageTimer);
-  // Visual stage advance while waiting on network (AI is the slow part)
   stageTimer = setInterval(() => {
-    i = Math.min(i + 1, STAGES.length - 2); // stop before final until real done
+    i = Math.min(i + 1, STAGES.length - 2);
     setStage(STAGES[i].id);
-  }, 1400);
+  }, 1600);
 }
 
 function finishLoadingVisual() {
@@ -213,9 +207,6 @@ function contactLines(item) {
   if (item.email) bits.push(`<span><strong>Email:</strong> ${escapeHtml(item.email)}</span>`);
   if (item.phone) bits.push(`<span><strong>Phone:</strong> ${escapeHtml(item.phone)}</span>`);
   if (item.company_name) bits.push(`<span><strong>Company:</strong> ${escapeHtml(item.company_name)}</span>`);
-  if (item.hours_ago_estimate != null) {
-    bits.push(`<span><strong>Time:</strong> ~${escapeHtml(String(item.hours_ago_estimate))}h ago</span>`);
-  }
   return bits;
 }
 
@@ -274,13 +265,10 @@ function renderCard(item, isMatch) {
     link.href = item.url;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
-    link.textContent = "Open original post →";
+    link.textContent = "Open source →";
     footer.append(inspectOne, link);
   } else {
-    const missing = document.createElement("span");
-    missing.className = "no-link";
-    missing.textContent = "No link pasted";
-    footer.append(inspectOne, missing);
+    footer.append(inspectOne);
   }
 
   body.append(top, text, reason);
@@ -307,14 +295,14 @@ function renderResults(data) {
   sourceTag.textContent = `Platform: ${platformLabel(source)}`;
   matchCount.textContent = String(matches.length);
   rejectCount.textContent = String(rejected.length);
-  summary.textContent = `${data.total_items} scanned · ${matches.length} match · ${rejected.length} rejected${filteredOut ? ` · ${filteredOut} failed filters` : ""}`;
+  summary.textContent = `${data.total_items} found · ${matches.length} match · ${rejected.length} rejected${filteredOut ? ` · ${filteredOut} filtered` : ""}`;
 
   emptyState.hidden = true;
   resultsContent.hidden = false;
   loadingPanel.hidden = true;
 
   if (!matches.length) {
-    matchesList.innerHTML = `<p class="empty">No matches for this input/filters.</p>`;
+    matchesList.innerHTML = `<p class="empty">No strong matches. Try a clearer intent or turn off strict contact filters.</p>`;
   } else {
     matches.forEach((m) => matchesList.appendChild(renderCard(m, true)));
   }
@@ -341,10 +329,9 @@ function openDrawer(items) {
       <p><strong>Email:</strong> ${escapeHtml(item.email || "—")}</p>
       <p><strong>Phone:</strong> ${escapeHtml(item.phone || "—")}</p>
       <p><strong>Company:</strong> ${escapeHtml(item.company_name || "—")}</p>
-      <p><strong>Role:</strong> ${escapeHtml(item.role || "—")}</p>
       <p class="muted">${escapeHtml(item.raw_text)}</p>
       <p class="muted">${escapeHtml(item.reason || "")}</p>
-      ${item.url ? `<p><a class="open-link" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Open original post →</a></p>` : ""}
+      ${item.url ? `<p><a class="open-link" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Open source →</a></p>` : ""}
     `;
     drawerBody.appendChild(el);
   });
@@ -366,7 +353,7 @@ copyEmailsBtn.addEventListener("click", async () => {
     .flatMap((i) => (i.emails?.length ? i.emails : i.email ? [i.email] : []));
   const unique = [...new Set(emails)];
   if (!unique.length) {
-    showError("No emails in the selected posts.");
+    showError("No emails in the selected leads.");
     return;
   }
   await navigator.clipboard.writeText(unique.join("\n"));
@@ -376,10 +363,10 @@ copyEmailsBtn.addEventListener("click", async () => {
 $("closeDrawer").addEventListener("click", closeDrawer);
 $("drawerBackdrop").addEventListener("click", closeDrawer);
 
-async function runFilter() {
+async function runDiscover() {
   showError("");
   const profilePayload = {
-    name: $("name").value.trim() || "Untitled",
+    name: $("name").value.trim() || "Search",
     intent: $("intent").value.trim(),
     want_remote: $("want_remote").checked,
     want_onsite: $("want_onsite").checked,
@@ -389,22 +376,18 @@ async function runFilter() {
     min_confidence: Number(confInput.value),
   };
 
-  const paste = $("paste").value.trim();
   const source = currentPlatform();
   const maxHoursRaw = $("max_hours").value;
+  const extra = ($("paste")?.value || "").trim();
 
   if (!profilePayload.intent) {
-    showError("Enter your intent first.");
-    return;
-  }
-  if (!paste) {
-    showError("Paste real posts before filtering.");
+    showError("Enter what you want to find (intent).");
     return;
   }
 
   runBtn.disabled = true;
-  $("hint").textContent = "Filtering in progress…";
-  summary.textContent = "Working on your posts…";
+  $("hint").textContent = "Searching platforms…";
+  summary.textContent = "Looking across platforms…";
   startLoadingVisual();
 
   try {
@@ -417,48 +400,44 @@ async function runFilter() {
     if (!profileRes.ok) throw new Error(await readError(profileRes));
     const profile = await profileRes.json();
 
-    setStage("scan");
-    await new Promise((r) => setTimeout(r, 250));
-
-    setStage("ai");
-    const filterRes = await fetch("/filter/run", {
+    setStage("search");
+    const discoverRes = await fetch("/discover/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         profile_id: profile.id,
-        text: paste,
         source,
         max_hours_ago: maxHoursRaw ? Number(maxHoursRaw) : null,
         require_email: $("require_email").checked,
         require_phone: $("require_phone").checked,
         require_name: $("require_name").checked,
+        extra_text: extra,
+        max_results: 20,
       }),
     });
-    if (!filterRes.ok) throw new Error(await readError(filterRes));
+    if (!discoverRes.ok) throw new Error(await readError(discoverRes));
 
+    setStage("ai");
+    const data = await discoverRes.json();
     setStage("filters");
-    const data = await filterRes.json();
-
     finishLoadingVisual();
-    await new Promise((r) => setTimeout(r, 350));
+    await new Promise((r) => setTimeout(r, 300));
     renderResults(data);
-    $("hint").textContent = `Done · ${data.matches?.length || 0} match(es)`;
+    $("hint").textContent = `Done · ${data.matches?.length || 0} match(es) from auto search`;
   } catch (err) {
     stopLoadingVisual(true);
-    summary.textContent = "Waiting for your input…";
-    showError(err.message || "Something went wrong");
-    $("hint").textContent = "Fix the error and try again.";
+    summary.textContent = "Waiting for your intent…";
+    showError(err.message || "Search failed");
+    $("hint").textContent = "Try again with a clearer intent.";
   } finally {
     runBtn.disabled = false;
   }
 }
 
-runBtn.addEventListener("click", runFilter);
+runBtn.addEventListener("click", runDiscover);
 
-// No predefined posts / intent — user must type everything
 $("paste").value = "";
 $("intent").value = "";
 $("name").value = "";
-
 setPlatform("all");
 checkHealth();

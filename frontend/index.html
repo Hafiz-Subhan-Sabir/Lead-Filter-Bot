@@ -17,10 +17,10 @@
       <header class="header">
         <div>
           <p class="eyebrow">Lead Filter Bot</p>
-          <h1>Accurate leads from any platform</h1>
+          <h1>It searches platforms for you</h1>
           <p class="sub">
-            Choose one platform or All Platforms. Paste posts, extract contacts,
-            rank by genuineness.
+            Enter what you want. The bot searches public listings across selected
+            platforms, filters for genuine matches, and shows results.
           </p>
         </div>
         <div class="header-side">
@@ -34,8 +34,8 @@
           <div class="step">
             <span class="step-num">1</span>
             <div>
-              <h2>Where are you looking?</h2>
-              <p class="step-help">Pick one platform, or scan as All Platforms (auto-detect from links).</p>
+              <h2>Where should it look?</h2>
+              <p class="step-help">One platform or All Platforms (public web results).</p>
             </div>
           </div>
 
@@ -48,23 +48,23 @@
             <button type="button" class="platform-chip" data-platform="facebook">Facebook</button>
             <button type="button" class="platform-chip" data-platform="instagram">Instagram</button>
             <button type="button" class="platform-chip" data-platform="google_maps">Google Maps</button>
-            <button type="button" class="platform-chip" data-platform="other">Other / Paste</button>
+            <button type="button" class="platform-chip" data-platform="other">Other / Web</button>
           </div>
           <input type="hidden" id="platform" value="all" />
 
           <div class="step">
             <span class="step-num">2</span>
             <div>
-              <h2>What do you want?</h2>
-              <p class="step-help">Intent, confidence, time window, and required contact fields.</p>
+              <h2>What do you want to find?</h2>
+              <p class="step-help">Only your intent is required — no posts to paste.</p>
             </div>
           </div>
 
           <label for="name">Profile name</label>
-          <input id="name" type="text" placeholder="e.g. Remote developer hires" value="" />
+          <input id="name" type="text" placeholder="Optional label" value="" />
 
           <label for="intent">Intent</label>
-          <textarea id="intent" rows="3" placeholder="Describe exactly what you want to find…"></textarea>
+          <textarea id="intent" rows="3" placeholder="e.g. businesses looking to hire someone to develop a website"></textarea>
 
           <div class="flags">
             <label class="check"><input type="checkbox" id="want_remote" /> Remote</label>
@@ -98,36 +98,32 @@
             <label class="check"><input type="checkbox" id="require_name" /> Must have name</label>
           </div>
 
-          <div class="step">
-            <span class="step-num">3</span>
-            <div>
-              <h2>Paste posts</h2>
-              <p class="step-help">
-                Blank line between posts. Optional URL last line. Optional
-                <code>6h:</code> / <code>[12h]</code> time prefix.
-              </p>
-            </div>
-          </div>
-
-          <label for="paste">Messages</label>
-          <textarea
-            id="paste"
-            rows="10"
-            placeholder="Paste real posts here. Blank line between each. Optional URL on last line. Optional 6h: time prefix."
-          ></textarea>
-
           <div class="actions">
-            <button id="runBtn" type="button">Filter messages</button>
-            <p class="hint" id="hint">Results appear only after you run a filter.</p>
+            <button id="runBtn" type="button">Find leads automatically</button>
+            <p class="hint" id="hint">Searches platforms from your intent, then filters.</p>
           </div>
           <p class="error" id="error" hidden></p>
+          <p class="limit-note">
+            Searches <strong>public</strong> web results on those platforms.
+            Private WhatsApp/LinkedIn groups need official access and cannot be scraped.
+          </p>
+
+          <details class="optional-paste">
+            <summary>Optional: also include pasted posts</summary>
+            <label for="paste">Extra messages (optional)</label>
+            <textarea
+              id="paste"
+              rows="5"
+              placeholder="Only if you already have posts. Leave empty for full auto search."
+            ></textarea>
+          </details>
         </section>
 
         <section class="panel results-panel">
           <div class="results-head">
             <div>
               <h2>Results</h2>
-              <p class="meta" id="summary">Waiting for your input…</p>
+              <p class="meta" id="summary">Waiting for your intent…</p>
             </div>
             <div class="source-tag" id="sourceTag">Platform: All Platforms</div>
           </div>
@@ -145,9 +141,9 @@
             </div>
             <ol class="stage-list" id="stageList">
               <li data-stage="profile">Saving your intent</li>
-              <li data-stage="scan">Reading pasted posts</li>
+              <li data-stage="search">Searching platforms</li>
               <li data-stage="ai">AI matching &amp; contact extraction</li>
-              <li data-stage="filters">Applying time / contact filters</li>
+              <li data-stage="filters">Applying filters</li>
               <li data-stage="rank">Ranking genuine leads</li>
             </ol>
           </div>
@@ -155,7 +151,7 @@
           <div id="resultsWrap">
             <div class="empty-state" id="emptyState">
               <p>No results yet.</p>
-              <p class="muted">Enter intent + paste posts, then hit <strong>Filter messages</strong>.</p>
+              <p class="muted">Type your intent, pick platforms, then hit <strong>Find leads automatically</strong>.</p>
             </div>
 
             <div id="resultsContent" hidden>

@@ -11,12 +11,14 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
 from database import SessionLocal, init_db  # noqa: E402
+from routers.discover import DiscoverRequest  # noqa: E402
 from routers.filter import decision_to_result, passes_soft_filters  # noqa: E402
 from schemas import FilterRequest, ProfileCreate  # noqa: E402
 from services import storage  # noqa: E402
 from services.ai_filter import classify_message  # noqa: E402
+from services.discover import discover_items  # noqa: E402
 from services.platform_detect import resolve_item_platform  # noqa: E402
-from services.splitter import split_into_items  # noqa: E402
+from services.splitter import ParsedItem, split_into_items  # noqa: E402
 
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 
@@ -174,6 +176,124 @@ def run_filter():
         return jsonify(
             {
                 "total_items": len(chunks),
+                "source": body.source,
+                "matches": matches,
+                "rejected": rejected,
+                "filtered_out": filtered_out,
+            }
+        )
+    except Exception as exc:
+        return jsonify({"detail": f"{type(exc).__name__}: {exc}"}), 500
+    finally:
+        db.close()
+
+
+@app.post("/discover/run")
+def run_discover():
+    try:
+        body = DiscoverRequest.model_validate(request.get_json(force=True))
+    except ValidationError as exc:
+        return jsonify({"detail": exc.errors()}), 422
+
+    db = SessionLocal()
+    try:
+        profile = storage.get_profile(db, body.profile_id)
+        if not profile:
+            return jsonify({"detail": "Profile not found"}), 404
+
+        profile_data = ProfileCreate(
+            name=profile.name,
+            intent=profile.intent,
+            want_remote=profile.want_remote,
+            want_onsite=profile.want_onsite,
+            want_hiring=profile.want_hiring,
+            want_startups=profile.want_startups,
+            want_no_website=profile.want_no_website,
+            min_confidence=profile.min_confidence,
+        )
+
+        discovered = discover_items(profile.intent, body.source)
+        chunks: list[ParsedItem] = [
+            ParsedItem(text=d.text, url=d.url, hours_ago_hint=None) for d in discovered
+        ]
+        platforms = [d.source for d in discovered]
+
+        if body.extra_text.strip():
+            for extra in split_into_items(body.extra_text):
+                chunks.append(extra)
+                platforms.append(body.source if body.source != "all" else "other")
+
+        if not chunks:
+            return jsonify(
+                {
+                    "detail": (
+                        "No public posts found for this intent/platform. "
+                        "Try a clearer intent or add BRAVE_API_KEY / SERPAPI_KEY in .env."
+                    )
+                }
+            ), 404
+
+        soft = FilterRequest(
+            text="x",
+            profile_id=body.profile_id,
+            source=body.source,
+            max_hours_ago=body.max_hours_ago,
+            require_email=body.require_email,
+            require_phone=body.require_phone,
+            require_name=body.require_name,
+        )
+
+        matches = []
+        rejected = []
+        filtered_out = 0
+        limit = min(len(chunks), body.max_results)
+
+        for i in range(limit):
+            chunk = chunks[i]
+            item_platform = platforms[i] if i < len(platforms) else body.source
+            item = storage.save_item(
+                db,
+                chunk.text,
+                source=item_platform,
+                url=chunk.url,
+            )
+            decision = classify_message(
+                profile_data,
+                chunk.text,
+                platform=item_platform,
+            )
+            result = storage.save_result(db, item, profile, decision)
+            out = decision_to_result(
+                item_id=item.id,
+                raw_text=item.raw_text,
+                source=item.source,
+                url=item.url,
+                decision=decision,
+                is_match=result.is_match,
+                hours_hint=chunk.hours_ago_hint,
+            )
+
+            if not passes_soft_filters(soft, out):
+                filtered_out += 1
+                out.is_match = False
+                out.reason = f"{(out.reason or '').strip()} (removed by time/contact filters)".strip()
+                rejected.append(out.model_dump())
+                continue
+
+            payload = out.model_dump()
+            if result.is_match:
+                matches.append(payload)
+            else:
+                rejected.append(payload)
+
+        matches.sort(
+            key=lambda r: (r.get("genuine_score", 0), r.get("confidence", 0)),
+            reverse=True,
+        )
+
+        return jsonify(
+            {
+                "total_items": limit,
                 "source": body.source,
                 "matches": matches,
                 "rejected": rejected,

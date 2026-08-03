@@ -374,6 +374,33 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   border-radius: 999px;
 }
 .no-link { color: var(--warn); font-size: 0.78rem; }
+.limit-note {
+  margin: 0.75rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.optional-paste {
+  margin-top: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.55rem 0.75rem;
+  background: rgba(0,0,0,0.16);
+}
+
+.optional-paste summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 0.86rem;
+}
+
+.optional-paste[open] summary {
+  margin-bottom: 0.5rem;
+  color: var(--text);
+}
+
 .empty { color: var(--muted); padding: 0.8rem 0.2rem; }
 
 .empty-state {
