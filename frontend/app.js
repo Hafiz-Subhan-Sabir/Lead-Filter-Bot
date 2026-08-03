@@ -12,19 +12,11 @@ const PLATFORM_LABELS = {
   other: "Web",
 };
 
-const STAGES = [
-  { id: "profile", title: "Saving intent profile", sub: "Preparing deep search…", pct: 8 },
-  { id: "search", title: "Multi-pass platform search", sub: "Querying platforms thoroughly…", pct: 35 },
-  { id: "ai", title: "AI classifying candidates", sub: "Scoring genuineness one by one…", pct: 68 },
-  { id: "filters", title: "Strict quality filters", sub: "Removing weak / spam results…", pct: 86 },
-  { id: "rank", title: "Final ranking", sub: "Ordering best leads first…", pct: 96 },
-];
-
 let itemIndex = {};
 const selectedIds = new Set();
-let stageTimer = null;
 let elapsedTimer = null;
 let searchStartedAt = 0;
+const stats = { queries: 0, found: 0, checked: 0, matches: 0 };
 
 const apiStatus = $("apiStatus");
 const errorEl = $("error");
@@ -51,6 +43,9 @@ const progressBar = $("progressBar");
 const loadingTitle = $("loadingTitle");
 const loadingSub = $("loadingSub");
 const elapsedEl = $("elapsedTimer");
+const livePlatform = $("livePlatform");
+const liveQuery = $("liveQuery");
+const activityFeed = $("activityFeed");
 
 function currentPlatform() {
   return platformInput.value || "all";
@@ -114,64 +109,136 @@ async function readError(res) {
 function formatElapsed(ms) {
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${m}:${String(r).padStart(2, "0")}`;
+  return `${m}:${String(s % 60).padStart(2, "0")}`;
 }
 
-function setStage(stageId) {
-  const stage = STAGES.find((s) => s.id === stageId) || STAGES[0];
-  loadingTitle.textContent = stage.title;
-  const elapsed = formatElapsed(Date.now() - searchStartedAt);
-  loadingSub.textContent = `${stage.sub} · ${elapsed} elapsed (target 3–5 min)`;
-  progressBar.style.width = `${stage.pct}%`;
-  document.querySelectorAll("#stageList li").forEach((li) => {
-    li.classList.remove("active", "done");
-    const idx = STAGES.findIndex((s) => s.id === li.dataset.stage);
-    const cur = STAGES.findIndex((s) => s.id === stageId);
-    if (idx < cur) li.classList.add("done");
-    if (idx === cur) li.classList.add("active");
-  });
+function updateStats() {
+  $("statQueries").textContent = String(stats.queries);
+  $("statFound").textContent = String(stats.found);
+  $("statChecked").textContent = String(stats.checked);
+  $("statMatches").textContent = String(stats.matches);
+}
+
+function addActivity(platform, message, kind = "") {
+  const row = document.createElement("div");
+  row.className = `activity-item ${kind}`.trim();
+  const plat = document.createElement("span");
+  plat.className = "plat";
+  plat.textContent = platformLabel(platform || "all");
+  const msg = document.createElement("div");
+  msg.className = "msg";
+  msg.textContent = message;
+  row.append(plat, msg);
+  activityFeed.prepend(row);
+  while (activityFeed.children.length > 80) {
+    activityFeed.removeChild(activityFeed.lastChild);
+  }
+}
+
+function setProgress(pct) {
+  progressBar.style.width = `${Math.max(4, Math.min(100, pct))}%`;
 }
 
 function startLoadingVisual() {
   emptyState.hidden = true;
   resultsContent.hidden = true;
   loadingPanel.hidden = false;
-  progressBar.style.width = "6%";
+  activityFeed.innerHTML = "";
+  stats.queries = 0;
+  stats.found = 0;
+  stats.checked = 0;
+  stats.matches = 0;
+  updateStats();
+  livePlatform.textContent = "—";
+  liveQuery.textContent = "Starting deep search…";
+  loadingTitle.textContent = "Deep search running…";
+  loadingSub.textContent = "Watch each platform and query below";
+  setProgress(4);
   searchStartedAt = Date.now();
   elapsedEl.textContent = "0:00";
-  setStage("profile");
-
   clearInterval(elapsedTimer);
   elapsedTimer = setInterval(() => {
     elapsedEl.textContent = formatElapsed(Date.now() - searchStartedAt);
   }, 1000);
-
-  let i = 0;
-  clearInterval(stageTimer);
-  // Slow visual stage advances to match deep search duration
-  stageTimer = setInterval(() => {
-    i = Math.min(i + 1, STAGES.length - 2);
-    setStage(STAGES[i].id);
-  }, 45000);
-}
-
-function finishLoadingVisual() {
-  clearInterval(stageTimer);
-  stageTimer = null;
-  setStage("rank");
-  progressBar.style.width = "100%";
 }
 
 function stopLoadingVisual(showEmpty) {
-  clearInterval(stageTimer);
   clearInterval(elapsedTimer);
-  stageTimer = null;
   elapsedTimer = null;
   loadingPanel.hidden = true;
   if (showEmpty) {
     emptyState.hidden = false;
     resultsContent.hidden = true;
+  }
+}
+
+function handleProgressEvent(ev) {
+  const type = ev.type;
+  const platform = ev.platform || ev.source || currentPlatform();
+
+  if (type === "stage") {
+    loadingTitle.textContent = ev.message || "Working…";
+    if (ev.stage === "profile") setProgress(8);
+    if (ev.stage === "queries") setProgress(12);
+    if (ev.stage === "search_complete") setProgress(45);
+    if (ev.stage === "classify") setProgress(55);
+    if (ev.stage === "rank") setProgress(92);
+    addActivity(platform, ev.message || "Stage update");
+  }
+
+  if (type === "queries_ready") {
+    liveQuery.textContent = ev.message || "Queries ready";
+    addActivity("all", ev.message || "Queries ready");
+    setProgress(15);
+  }
+
+  if (type === "searching") {
+    stats.queries = ev.index || stats.queries + 1;
+    updateStats();
+    livePlatform.textContent = platformLabel(platform);
+    liveQuery.textContent = ev.query || ev.message || "Searching…";
+    loadingTitle.textContent = `Searching ${platformLabel(platform)}`;
+    loadingSub.textContent = `Pass ${ev.index || "?"} / ${ev.total || "?"}`;
+    const pct = 15 + (35 * (ev.index || 1)) / Math.max(1, ev.total || 1);
+    setProgress(pct);
+    addActivity(platform, `Looking for: ${ev.query || ev.message}`);
+  }
+
+  if (type === "found") {
+    stats.found = ev.candidates || stats.found + 1;
+    updateStats();
+    addActivity(platform, ev.message || ev.title || "Found listing");
+  }
+
+  if (type === "search_done") {
+    addActivity(platform, ev.message || "Search pass done");
+  }
+
+  if (type === "pause") {
+    liveQuery.textContent = ev.message || "Pacing…";
+    addActivity(platform, ev.message || "Pacing before next search");
+  }
+
+  if (type === "classify") {
+    stats.checked = ev.index || stats.checked + 1;
+    updateStats();
+    livePlatform.textContent = platformLabel(platform);
+    liveQuery.textContent = ev.preview || ev.message || "Classifying…";
+    loadingTitle.textContent = `AI on ${platformLabel(platform)}`;
+    loadingSub.textContent = `Candidate ${ev.index}/${ev.total}`;
+    const pct = 50 + (40 * (ev.index || 1)) / Math.max(1, ev.total || 1);
+    setProgress(pct);
+    addActivity(platform, ev.message || `Checking ${ev.index}/${ev.total}`);
+  }
+
+  if (type === "match") {
+    stats.matches += 1;
+    updateStats();
+    addActivity(platform, ev.message || "Match found", "match-row");
+  }
+
+  if (type === "reject") {
+    addActivity(platform, ev.message || "Rejected", "reject-row");
   }
 }
 
@@ -297,11 +364,12 @@ function renderResults(data) {
   sourceTag.textContent = platformLabel(source);
   matchCount.textContent = String(matches.length);
   rejectCount.textContent = String(rejected.length);
-  summary.textContent = `${data.total_items} scanned · ${matches.length} strong matches · ${rejected.length} rejected · ${elapsed}`;
+  summary.textContent = `${data.total_items} scanned · ${matches.length} strong · ${rejected.length} rejected · ${elapsed}`;
 
   emptyState.hidden = true;
   resultsContent.hidden = false;
   loadingPanel.hidden = true;
+  setProgress(100);
 
   if (!matches.length) {
     matchesList.innerHTML = `<p class="empty">No strong matches after deep filtering. Try a clearer intent.</p>`;
@@ -382,12 +450,11 @@ async function runDiscover() {
   }
 
   runBtn.disabled = true;
-  $("hint").textContent = "Deep search running — keep this tab open…";
-  summary.textContent = "Deep search in progress (3–5 min)…";
+  $("hint").textContent = "Live search running — watch platforms below…";
+  summary.textContent = "Deep search in progress…";
   startLoadingVisual();
 
   try {
-    setStage("profile");
     const profileRes = await fetch("/profiles", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -396,8 +463,7 @@ async function runDiscover() {
     if (!profileRes.ok) throw new Error(await readError(profileRes));
     const profile = await profileRes.json();
 
-    setStage("search");
-    const discoverRes = await fetch("/discover/run", {
+    const res = await fetch("/discover/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -412,14 +478,43 @@ async function runDiscover() {
         deep: true,
       }),
     });
-    if (!discoverRes.ok) throw new Error(await readError(discoverRes));
-    setStage("ai");
-    const data = await discoverRes.json();
-    setStage("filters");
-    finishLoadingVisual();
-    await new Promise((r) => setTimeout(r, 400));
-    renderResults(data);
-    $("hint").textContent = `Done · ${data.matches?.length || 0} strong match(es)`;
+    if (!res.ok) throw new Error(await readError(res));
+    if (!res.body) throw new Error("No live stream from server");
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let finalResult = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let ev;
+        try {
+          ev = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (ev.type === "done") {
+          finalResult = ev.result;
+          addActivity(source, ev.message || "Finished", "match-row");
+          setProgress(100);
+        } else if (ev.type === "error") {
+          throw new Error(ev.message || "Search failed");
+        } else {
+          handleProgressEvent(ev);
+        }
+      }
+    }
+
+    if (!finalResult) throw new Error("Search ended without results");
+    renderResults(finalResult);
+    $("hint").textContent = `Done · ${finalResult.matches?.length || 0} strong match(es)`;
   } catch (err) {
     stopLoadingVisual(true);
     summary.textContent = "Ready when you are.";

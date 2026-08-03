@@ -268,13 +268,39 @@ def _looks_weak(text: str) -> bool:
     return False
 
 
-def discover_items(intent: str, platform: str = "all") -> list[DiscoveredItem]:
+def discover_items(
+    intent: str,
+    platform: str = "all",
+    on_progress=None,
+) -> list[DiscoveredItem]:
     """
-    Deep multi-pass discovery.
-    Paces searches so a full run typically lands in the ~3–5 minute window
-    together with AI classification.
+    Deep multi-pass discovery with optional progress callback:
+      on_progress({"type": "...", ...})
     """
+    def emit(event: dict) -> None:
+        if on_progress:
+            try:
+                on_progress(event)
+            except Exception:
+                pass
+
+    emit(
+        {
+            "type": "stage",
+            "stage": "queries",
+            "message": "Building smart search queries from your intent…",
+        }
+    )
     queries = build_search_queries(intent, platform)
+    emit(
+        {
+            "type": "queries_ready",
+            "total_queries": len(queries),
+            "platforms": sorted({p for p, _ in queries}),
+            "message": f"Prepared {len(queries)} searches across {len({p for p, _ in queries})} platform(s).",
+        }
+    )
+
     per_query = max(5, settings.discover_max_results // max(1, len(queries)))
     pause = max(3.0, float(settings.discover_pause_seconds))
 
@@ -283,7 +309,18 @@ def discover_items(intent: str, platform: str = "all") -> list[DiscoveredItem]:
     items: list[DiscoveredItem] = []
 
     for idx, (p, query) in enumerate(queries):
+        emit(
+            {
+                "type": "searching",
+                "platform": p,
+                "query": query,
+                "index": idx + 1,
+                "total": len(queries),
+                "message": f"Searching {p}: looking for “{query[:110]}”",
+            }
+        )
         rows = search_web(query, per_query)
+        added = 0
         for row in rows:
             url = (row.get("href") or "").strip()
             title = (row.get("title") or "").strip()
@@ -302,11 +339,48 @@ def discover_items(intent: str, platform: str = "all") -> list[DiscoveredItem]:
             items.append(
                 DiscoveredItem(text=text, url=url or None, source=p, title=title or None)
             )
+            added += 1
+            emit(
+                {
+                    "type": "found",
+                    "platform": p,
+                    "title": title[:120],
+                    "url": url or None,
+                    "candidates": len(items),
+                    "message": f"Found on {p}: {title[:90] or 'listing'}",
+                }
+            )
 
-        # Pace between query batches (skip after last)
+        emit(
+            {
+                "type": "search_done",
+                "platform": p,
+                "index": idx + 1,
+                "total": len(queries),
+                "added": added,
+                "candidates": len(items),
+                "message": f"Finished {p} pass {idx + 1}/{len(queries)} — +{added} kept (total {len(items)})",
+            }
+        )
+
         if idx < len(queries) - 1:
+            emit(
+                {
+                    "type": "pause",
+                    "seconds": pause,
+                    "message": f"Pacing {int(pause)}s before next platform search…",
+                }
+            )
             time.sleep(pause)
 
+    emit(
+        {
+            "type": "stage",
+            "stage": "search_complete",
+            "candidates": len(items),
+            "message": f"Search complete — {len(items)} unique candidates ready for AI review.",
+        }
+    )
     return items
 
 

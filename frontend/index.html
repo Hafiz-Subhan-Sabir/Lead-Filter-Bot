@@ -115,7 +115,7 @@
           <div class="loading-panel" id="loadingPanel" hidden>
             <div class="loading-top">
               <div class="spinner"></div>
-              <div>
+              <div class="loading-copy">
                 <p class="loading-title" id="loadingTitle">Deep search running…</p>
                 <p class="loading-sub" id="loadingSub">This usually takes 3–5 minutes</p>
               </div>
@@ -124,16 +124,29 @@
                 <small>elapsed</small>
               </div>
             </div>
+
+            <div class="live-status" id="liveStatus">
+              <div class="live-platform">
+                <span class="live-label">Now on</span>
+                <strong id="livePlatform">—</strong>
+              </div>
+              <div class="live-query" id="liveQuery">Preparing…</div>
+              <div class="live-stats">
+                <span><b id="statQueries">0</b> searches</span>
+                <span><b id="statFound">0</b> found</span>
+                <span><b id="statChecked">0</b> checked</span>
+                <span><b id="statMatches">0</b> matches</span>
+              </div>
+            </div>
+
             <div class="progress-track">
               <div class="progress-bar" id="progressBar"></div>
             </div>
-            <ol class="stage-list" id="stageList">
-              <li data-stage="profile">Save intent profile</li>
-              <li data-stage="search">Multi-pass platform search</li>
-              <li data-stage="ai">AI classify each candidate</li>
-              <li data-stage="filters">Strict genuineness filters</li>
-              <li data-stage="rank">Final ranking</li>
-            </ol>
+
+            <div class="activity-wrap">
+              <p class="activity-label">Live process</p>
+              <div class="activity-feed" id="activityFeed" aria-live="polite"></div>
+            </div>
           </div>
 
           <div id="resultsWrap">

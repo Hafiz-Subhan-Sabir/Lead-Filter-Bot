@@ -12,7 +12,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 from config import settings  # noqa: E402
 from database import SessionLocal, init_db  # noqa: E402
-from routers.discover import DiscoverRequest  # noqa: E402
+from routers.discover import DiscoverRequest, _run_pipeline  # noqa: E402
 from routers.filter import decision_to_result, passes_soft_filters  # noqa: E402
 from schemas import FilterRequest, ProfileCreate  # noqa: E402
 from services import storage  # noqa: E402
@@ -321,6 +321,53 @@ def run_discover():
         return jsonify({"detail": f"{type(exc).__name__}: {exc}"}), 500
     finally:
         db.close()
+
+
+@app.post("/discover/stream")
+def run_discover_stream():
+    import json
+    import queue
+    import threading
+
+    try:
+        body = DiscoverRequest.model_validate(request.get_json(force=True))
+    except ValidationError as exc:
+        return jsonify({"detail": exc.errors()}), 422
+
+    def generate():
+        q = queue.Queue()
+
+        def emit(event):
+            q.put(event)
+
+        def worker():
+            db = SessionLocal()
+            try:
+                result = _run_pipeline(body, db, on_progress=emit)
+                q.put(
+                    {
+                        "type": "done",
+                        "message": (
+                            f"Done — {len(result.matches)} strong matches from "
+                            f"{result.total_items} candidates."
+                        ),
+                        "result": result.model_dump(),
+                    }
+                )
+            except Exception as exc:
+                q.put({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
+            finally:
+                db.close()
+                q.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            yield json.dumps(item, ensure_ascii=False) + "\n"
+
+    return app.response_class(generate(), mimetype="application/x-ndjson")
 
 
 application = app
