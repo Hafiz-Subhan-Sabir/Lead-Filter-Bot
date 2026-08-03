@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lead Filter Bot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="header">
+        <div>
+          <p class="eyebrow">Lead Filter Bot</p>
+          <h1>Paste posts. Keep only what matches.</h1>
+          <p class="sub">
+            Tell the bot what you want, paste messages from any app (blank line
+            between each), and get matches vs rejected.
+          </p>
+        </div>
+        <div class="status" id="apiStatus" aria-live="polite">Checking API…</div>
+      </header>
+
+      <main class="layout">
+        <section class="panel">
+          <h2>What are you looking for?</h2>
+
+          <label for="name">Profile name</label>
+          <input id="name" type="text" value="Dev hiring remote" />
+
+          <label for="intent">Intent (plain English)</label>
+          <textarea id="intent" rows="4">
+People looking to hire developers or freelancers for software work, preferably remote, startups welcome</textarea
+          >
+
+          <div class="flags">
+            <label class="check"
+              ><input type="checkbox" id="want_remote" checked /> Remote</label
+            >
+            <label class="check"
+              ><input type="checkbox" id="want_onsite" /> Onsite</label
+            >
+            <label class="check"
+              ><input type="checkbox" id="want_hiring" checked /> Hiring</label
+            >
+            <label class="check"
+              ><input type="checkbox" id="want_startups" checked /> Startups</label
+            >
+            <label class="check"
+              ><input type="checkbox" id="want_no_website" /> No website</label
+            >
+          </div>
+
+          <label for="min_confidence"
+            >Min confidence <span id="confLabel">0.70</span></label
+          >
+          <input
+            id="min_confidence"
+            type="range"
+            min="0.5"
+            max="0.95"
+            step="0.05"
+            value="0.7"
+          />
+
+          <label for="paste">Paste messages (blank line between each)</label>
+          <textarea id="paste" rows="12" placeholder="Message one here...
+
+Message two here...
+
+Message three here..."></textarea>
+
+          <div class="actions">
+            <button id="runBtn" type="button">Filter messages</button>
+            <p class="hint" id="hint">Creates a profile, then runs the AI filter.</p>
+          </div>
+          <p class="error" id="error" hidden></p>
+        </section>
+
+        <section class="panel results-panel">
+          <div class="results-head">
+            <h2>Results</h2>
+            <p class="meta" id="summary">Run a filter to see matches here.</p>
+          </div>
+
+          <div class="tabs">
+            <button class="tab active" data-tab="matches" type="button">
+              Matches <span id="matchCount">0</span>
+            </button>
+            <button class="tab" data-tab="rejected" type="button">
+              Rejected <span id="rejectCount">0</span>
+            </button>
+          </div>
+
+          <div id="matchesList" class="list"></div>
+          <div id="rejectedList" class="list" hidden></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
