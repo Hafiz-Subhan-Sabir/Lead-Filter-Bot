@@ -1,8 +1,5 @@
 """
-PythonAnywhere-friendly Flask app (plain WSGI — no a2wsgi / ASGI).
-
-Point PA WSGI file at:
-  from pa_app import application
+PythonAnywhere-friendly Flask app (plain WSGI).
 """
 from pathlib import Path
 
@@ -18,6 +15,7 @@ from routers.filter import decision_to_result, passes_soft_filters  # noqa: E402
 from schemas import FilterRequest, ProfileCreate  # noqa: E402
 from services import storage  # noqa: E402
 from services.ai_filter import classify_message  # noqa: E402
+from services.platform_detect import resolve_item_platform  # noqa: E402
 from services.splitter import split_into_items  # noqa: E402
 
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
@@ -25,6 +23,11 @@ FRONTEND_DIR = PROJECT_ROOT / "frontend"
 init_db()
 
 app = Flask(__name__, static_folder=str(FRONTEND_DIR), static_url_path="/static")
+
+
+@app.errorhandler(Exception)
+def handle_unexpected(err):
+    return jsonify({"detail": f"{type(err).__name__}: {err}"}), 500
 
 
 @app.get("/health")
@@ -113,21 +116,25 @@ def run_filter():
         )
 
         chunks = split_into_items(body.text)
+        if not chunks:
+            return jsonify({"detail": "No valid posts found in paste text"}), 400
+
         matches = []
         rejected = []
         filtered_out = 0
 
         for chunk in chunks:
+            item_platform = resolve_item_platform(body.source, chunk.url)
             item = storage.save_item(
                 db,
                 chunk.text,
-                source=body.source,
+                source=item_platform,
                 url=chunk.url,
             )
             decision = classify_message(
                 profile_data,
                 chunk.text,
-                platform=body.source,
+                platform=item_platform,
             )
             if (
                 chunk.hours_ago_hint is not None
@@ -148,6 +155,9 @@ def run_filter():
 
             if not passes_soft_filters(body, out):
                 filtered_out += 1
+                out.is_match = False
+                out.reason = f"{(out.reason or '').strip()} (removed by time/contact filters)".strip()
+                rejected.append(out.model_dump())
                 continue
 
             payload = out.model_dump()
@@ -155,6 +165,11 @@ def run_filter():
                 matches.append(payload)
             else:
                 rejected.append(payload)
+
+        matches.sort(
+            key=lambda r: (r.get("genuine_score", 0), r.get("confidence", 0)),
+            reverse=True,
+        )
 
         return jsonify(
             {
@@ -165,6 +180,8 @@ def run_filter():
                 "filtered_out": filtered_out,
             }
         )
+    except Exception as exc:
+        return jsonify({"detail": f"{type(exc).__name__}: {exc}"}), 500
     finally:
         db.close()
 

@@ -7,27 +7,25 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Newsreader:opsz,wght@6..72,600;6..72,700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <div class="page">
+    <div class="shell">
       <header class="header">
-        <div class="brand-block">
+        <div>
           <p class="eyebrow">Lead Filter Bot</p>
-          <h1>Find the right posts. Skip the noise.</h1>
+          <h1>Accurate leads from any platform</h1>
           <p class="sub">
-            Platform-aware filtering with contact extraction, time windows, and
-            a detail inbox for selected leads.
+            Choose one platform or All Platforms. Paste posts, extract contacts,
+            rank by genuineness.
           </p>
         </div>
         <div class="header-side">
-          <div class="status" id="apiStatus" aria-live="polite">Checking API…</div>
-          <div class="looking-pill" id="lookingPill">
-            Looking on: <strong id="lookingLabel">LinkedIn</strong>
-          </div>
+          <div class="status" id="apiStatus">Checking API…</div>
+          <div class="looking-pill">Looking on: <strong id="lookingLabel">All Platforms</strong></div>
         </div>
       </header>
 
@@ -36,13 +34,14 @@
           <div class="step">
             <span class="step-num">1</span>
             <div>
-              <h2>Where are you looking right now?</h2>
-              <p class="step-help">AI uses this platform context for better accuracy.</p>
+              <h2>Where are you looking?</h2>
+              <p class="step-help">Pick one platform, or scan as All Platforms (auto-detect from links).</p>
             </div>
           </div>
 
-          <div class="platform-grid" id="platformGrid" role="radiogroup" aria-label="Platform">
-            <button type="button" class="platform-chip active" data-platform="linkedin">LinkedIn</button>
+          <div class="platform-grid" id="platformGrid">
+            <button type="button" class="platform-chip active" data-platform="all">All Platforms</button>
+            <button type="button" class="platform-chip" data-platform="linkedin">LinkedIn</button>
             <button type="button" class="platform-chip" data-platform="whatsapp">WhatsApp</button>
             <button type="button" class="platform-chip" data-platform="upwork">Upwork</button>
             <button type="button" class="platform-chip" data-platform="fiverr">Fiverr</button>
@@ -51,21 +50,21 @@
             <button type="button" class="platform-chip" data-platform="google_maps">Google Maps</button>
             <button type="button" class="platform-chip" data-platform="other">Other / Paste</button>
           </div>
-          <input type="hidden" id="platform" value="linkedin" />
+          <input type="hidden" id="platform" value="all" />
 
           <div class="step">
             <span class="step-num">2</span>
             <div>
-              <h2>What do you want to find?</h2>
-              <p class="step-help">Intent + advanced filters (time, contact requirements).</p>
+              <h2>What do you want?</h2>
+              <p class="step-help">Intent, confidence, time window, and required contact fields.</p>
             </div>
           </div>
 
           <label for="name">Profile name</label>
-          <input id="name" type="text" value="Dev hiring remote" />
+          <input id="name" type="text" value="Expert Developer" />
 
           <label for="intent">Intent</label>
-          <textarea id="intent" rows="3">People looking to hire developers or freelancers for software work, preferably remote, startups welcome</textarea>
+          <textarea id="intent" rows="3">Looking to hire developers or freelancers for software work, preferably remote, startups welcome</textarea>
 
           <div class="flags">
             <label class="check"><input type="checkbox" id="want_remote" checked /> Remote</label>
@@ -88,7 +87,7 @@
                 <option value="12">Last 12 hours</option>
                 <option value="24">Last 24 hours</option>
                 <option value="72">Last 3 days</option>
-                <option value="168">Last 7 days</option>
+                <option value="168" selected>Last 7 days</option>
               </select>
             </div>
           </div>
@@ -104,28 +103,20 @@
             <div>
               <h2>Paste posts</h2>
               <p class="step-help">
-                Blank line between posts. Optional URL on last line. Optional time
-                prefix like <code>6h:</code> or <code>[12h]</code>. Contact info in
-                the text is extracted automatically.
+                Blank line between posts. Optional URL last line. Optional
+                <code>6h:</code> / <code>[12h]</code> time prefix.
               </p>
             </div>
           </div>
 
           <label for="paste">Messages</label>
-          <textarea id="paste" rows="11" placeholder="6h: Post text...
-https://link
-
-Next post..."></textarea>
+          <textarea id="paste" rows="10"></textarea>
 
           <div class="actions">
             <button id="runBtn" type="button">Filter messages</button>
-            <p class="hint" id="hint">AI classifies, extracts contacts, applies filters.</p>
+            <p class="hint" id="hint">Ranks matches by genuineness + confidence.</p>
           </div>
           <p class="error" id="error" hidden></p>
-          <p class="limit-note">
-            Contact info is extracted from the pasted text (email/phone/name).
-            Platforms do not allow private uploader scraping from this app.
-          </p>
         </section>
 
         <section class="panel results-panel">
@@ -134,19 +125,13 @@ Next post..."></textarea>
               <h2>Results</h2>
               <p class="meta" id="summary">Run a filter to see matches here.</p>
             </div>
-            <div class="source-tag" id="sourceTag">Platform: LinkedIn</div>
+            <div class="source-tag" id="sourceTag">Platform: All Platforms</div>
           </div>
 
           <div class="toolbar">
-            <label class="check">
-              <input type="checkbox" id="selectAll" /> Select all visible
-            </label>
-            <button type="button" class="ghost-btn" id="inspectBtn" disabled>
-              Inspect selected
-            </button>
-            <button type="button" class="ghost-btn" id="copyEmailsBtn" disabled>
-              Copy emails
-            </button>
+            <label class="check"><input type="checkbox" id="selectAll" /> Select all visible</label>
+            <button type="button" class="ghost-btn" id="inspectBtn" disabled>Inspect selected</button>
+            <button type="button" class="ghost-btn" id="copyEmailsBtn" disabled>Copy emails</button>
           </div>
 
           <div class="tabs">
@@ -166,9 +151,9 @@ Next post..."></textarea>
 
     <aside class="drawer" id="drawer" hidden>
       <div class="drawer-backdrop" id="drawerBackdrop"></div>
-      <div class="drawer-panel" role="dialog" aria-labelledby="drawerTitle">
+      <div class="drawer-panel">
         <div class="drawer-head">
-          <h2 id="drawerTitle">Selected leads</h2>
+          <h2>Selected leads</h2>
           <button type="button" class="ghost-btn" id="closeDrawer">Close</button>
         </div>
         <div id="drawerBody" class="drawer-body"></div>

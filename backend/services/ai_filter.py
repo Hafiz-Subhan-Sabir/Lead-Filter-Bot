@@ -16,7 +16,7 @@ _client: OpenAI | None = None
 def get_client() -> OpenAI:
     global _client
     if _client is None:
-        _client = OpenAI(api_key=settings.openai_api_key)
+        _client = OpenAI(api_key=settings.openai_api_key, timeout=60.0)
     return _client
 
 
@@ -41,9 +41,11 @@ PROFILE FLAGS:
 MESSAGE:
 {message}
 
+Also include genuine_score (0..100): higher when specific role, clear hire intent, real contact details, no spam signals.
+
 Return JSON with keys:
 is_match, category, work_type, company_type, is_lead, has_website,
-confidence, reason, extracted
+confidence, genuine_score, reason, extracted
 """
 
 
@@ -64,6 +66,16 @@ def _merge_contacts(decision: AIDecision, text: str) -> AIDecision:
         phones.insert(0, found["phone"])
 
     website = ext.website or found.get("website")
+
+    # Boost genuine score when real contacts exist; cut for spam category
+    score = decision.genuine_score or (decision.confidence * 100)
+    if emails or phones:
+        score = max(score, 70)
+    if decision.category == "spam":
+        score = min(score, 15)
+    if decision.is_match and decision.confidence >= 0.8:
+        score = max(score, 75)
+    decision.genuine_score = max(0.0, min(100.0, float(score)))
 
     decision.extracted = ExtractedFields(
         role=ext.role,
@@ -88,19 +100,42 @@ def classify_message(
     message: str,
     platform: str = "other",
 ) -> AIDecision:
-    response = get_client().chat.completions.create(
-        model=settings.openai_model,
-        temperature=0,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": build_user_prompt(profile, message, platform),
-            },
-        ],
-    )
-    content = response.choices[0].message.content or "{}"
-    data = json.loads(content)
-    decision = AIDecision.model_validate(data)
+    try:
+        response = get_client().chat.completions.create(
+            model=settings.openai_model,
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": build_user_prompt(profile, message, platform),
+                },
+            ],
+        )
+        content = response.choices[0].message.content or "{}"
+        data = json.loads(content)
+        decision = AIDecision.model_validate(data)
+    except Exception as exc:
+        # Never crash the whole request — return a safe non-match with reason
+        found = extract_contacts_from_text(message)
+        decision = AIDecision(
+            is_match=False,
+            category="other",
+            work_type="unknown",
+            company_type="unknown",
+            is_lead=False,
+            confidence=0.0,
+            genuine_score=0.0,
+            reason=f"AI unavailable ({type(exc).__name__}): {exc}",
+            extracted=ExtractedFields(
+                email=found.get("email"),
+                phone=found.get("phone"),
+                emails=found.get("emails") or [],
+                phones=found.get("phones") or [],
+                website=found.get("website"),
+            ),
+        )
+        return decision
+
     return _merge_contacts(decision, message)

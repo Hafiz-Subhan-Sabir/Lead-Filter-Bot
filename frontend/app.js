@@ -1,6 +1,7 @@
 const $ = (id) => document.getElementById(id);
 
 const PLATFORM_LABELS = {
+  all: "All Platforms",
   linkedin: "LinkedIn",
   whatsapp: "WhatsApp",
   upwork: "Upwork",
@@ -11,9 +12,7 @@ const PLATFORM_LABELS = {
   other: "Other / Paste",
 };
 
-/** @type {Record<number, object>} */
 let itemIndex = {};
-/** @type {Set<number>} */
 const selectedIds = new Set();
 
 const apiStatus = $("apiStatus");
@@ -36,7 +35,7 @@ const drawer = $("drawer");
 const drawerBody = $("drawerBody");
 
 function currentPlatform() {
-  return platformInput.value || "other";
+  return platformInput.value || "all";
 }
 
 function platformLabel(key) {
@@ -89,6 +88,20 @@ function showError(msg) {
   errorEl.textContent = msg || "";
 }
 
+async function readError(res) {
+  const text = await res.text();
+  try {
+    const data = JSON.parse(text);
+    if (typeof data.detail === "string") return data.detail;
+    return JSON.stringify(data.detail || data);
+  } catch {
+    if (text.includes("Internal Server Error")) {
+      return "Server error 500. Check OpenAI key / PythonAnywhere error log. Retry after reload.";
+    }
+    return text.slice(0, 300) || `HTTP ${res.status}`;
+  }
+}
+
 function badge(text, className = "") {
   const span = document.createElement("span");
   span.className = className ? `badge ${className}` : "badge";
@@ -121,26 +134,6 @@ selectAll.addEventListener("change", () => {
   });
 });
 
-function contactLines(item) {
-  const name = item.contact_name || item.uploader_name;
-  const bits = [];
-  if (name) bits.push(`<span><strong>Name:</strong> ${escapeHtml(name)}</span>`);
-  if (item.email) bits.push(`<span><strong>Email:</strong> ${escapeHtml(item.email)}</span>`);
-  if (item.phone) bits.push(`<span><strong>Phone:</strong> ${escapeHtml(item.phone)}</span>`);
-  if (item.company_name) {
-    bits.push(`<span><strong>Company:</strong> ${escapeHtml(item.company_name)}</span>`);
-  }
-  if (item.website) {
-    bits.push(`<span><strong>Website:</strong> ${escapeHtml(item.website)}</span>`);
-  }
-  if (item.hours_ago_estimate != null) {
-    bits.push(
-      `<span><strong>Time:</strong> ~${escapeHtml(String(item.hours_ago_estimate))}h ago</span>`
-    );
-  }
-  return bits;
-}
-
 function escapeHtml(s) {
   return String(s)
     .replaceAll("&", "&amp;")
@@ -149,9 +142,21 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;");
 }
 
+function contactLines(item) {
+  const name = item.contact_name || item.uploader_name;
+  const bits = [];
+  if (name) bits.push(`<span><strong>Name:</strong> ${escapeHtml(name)}</span>`);
+  if (item.email) bits.push(`<span><strong>Email:</strong> ${escapeHtml(item.email)}</span>`);
+  if (item.phone) bits.push(`<span><strong>Phone:</strong> ${escapeHtml(item.phone)}</span>`);
+  if (item.company_name) bits.push(`<span><strong>Company:</strong> ${escapeHtml(item.company_name)}</span>`);
+  if (item.hours_ago_estimate != null) {
+    bits.push(`<span><strong>Time:</strong> ~${escapeHtml(String(item.hours_ago_estimate))}h ago</span>`);
+  }
+  return bits;
+}
+
 function renderCard(item, isMatch) {
   itemIndex[item.item_id] = item;
-
   const card = document.createElement("article");
   card.className = `card ${isMatch ? "match" : "reject"}`;
 
@@ -171,12 +176,8 @@ function renderCard(item, isMatch) {
   top.className = "card-top";
   top.appendChild(badge(platformLabel(item.source), "platform"));
   top.appendChild(badge(item.category || "unknown", isMatch ? "accent" : ""));
-  if (item.work_type && item.work_type !== "unknown") top.appendChild(badge(item.work_type));
-  if (item.company_type && item.company_type !== "unknown") {
-    top.appendChild(badge(item.company_type));
-  }
+  top.appendChild(badge(`genuine ${Math.round(item.genuine_score || 0)}`, "genuine"));
   top.appendChild(badge(`confidence ${(item.confidence ?? 0).toFixed(2)}`));
-  if (item.is_lead) top.appendChild(badge("lead", "accent"));
   if (item.has_contact) top.appendChild(badge("contact", "accent"));
 
   const text = document.createElement("p");
@@ -242,10 +243,10 @@ function renderResults(data) {
   sourceTag.textContent = `Platform: ${platformLabel(source)}`;
   matchCount.textContent = String(matches.length);
   rejectCount.textContent = String(rejected.length);
-  summary.textContent = `${data.total_items} scanned on ${platformLabel(source)} · ${matches.length} match · ${rejected.length} rejected${filteredOut ? ` · ${filteredOut} removed by filters` : ""}`;
+  summary.textContent = `${data.total_items} scanned · ${matches.length} match · ${rejected.length} rejected${filteredOut ? ` · ${filteredOut} failed filters` : ""}`;
 
   if (!matches.length) {
-    matchesList.innerHTML = `<p class="empty">No matches for this intent/filters on ${platformLabel(source)}.</p>`;
+    matchesList.innerHTML = `<p class="empty">No matches. Tip: turn off “Must have email/phone/name” if posts lack contacts.</p>`;
   } else {
     matches.forEach((m) => matchesList.appendChild(renderCard(m, true)));
   }
@@ -268,13 +269,11 @@ function openDrawer(items) {
     el.innerHTML = `
       <h3>${escapeHtml(name)}</h3>
       <p><strong>Platform:</strong> ${escapeHtml(platformLabel(item.source))}</p>
+      <p><strong>Genuine:</strong> ${Math.round(item.genuine_score || 0)} / 100</p>
       <p><strong>Email:</strong> ${escapeHtml(item.email || "—")}</p>
       <p><strong>Phone:</strong> ${escapeHtml(item.phone || "—")}</p>
       <p><strong>Company:</strong> ${escapeHtml(item.company_name || "—")}</p>
       <p><strong>Role:</strong> ${escapeHtml(item.role || "—")}</p>
-      <p><strong>Location:</strong> ${escapeHtml(item.location || "—")}</p>
-      <p><strong>Time:</strong> ${item.hours_ago_estimate != null ? `~${escapeHtml(String(item.hours_ago_estimate))}h ago` : escapeHtml(item.date_mentioned || "—")}</p>
-      <p><strong>Website:</strong> ${escapeHtml(item.website || "—")}</p>
       <p class="muted">${escapeHtml(item.raw_text)}</p>
       <p class="muted">${escapeHtml(item.reason || "")}</p>
       ${item.url ? `<p><a class="open-link" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Open original post →</a></p>` : ""}
@@ -289,15 +288,14 @@ function closeDrawer() {
 }
 
 inspectBtn.addEventListener("click", () => {
-  const items = [...selectedIds].map((id) => itemIndex[id]).filter(Boolean);
-  openDrawer(items);
+  openDrawer([...selectedIds].map((id) => itemIndex[id]).filter(Boolean));
 });
 
 copyEmailsBtn.addEventListener("click", async () => {
   const emails = [...selectedIds]
     .map((id) => itemIndex[id])
     .filter(Boolean)
-    .flatMap((i) => i.emails?.length ? i.emails : i.email ? [i.email] : []);
+    .flatMap((i) => (i.emails?.length ? i.emails : i.email ? [i.email] : []));
   const unique = [...new Set(emails)];
   if (!unique.length) {
     showError("No emails in the selected posts.");
@@ -313,7 +311,7 @@ $("drawerBackdrop").addEventListener("click", closeDrawer);
 async function runFilter() {
   showError("");
   runBtn.disabled = true;
-  $("hint").textContent = "Creating profile & calling AI…";
+  $("hint").textContent = "Running filter…";
 
   const profilePayload = {
     name: $("name").value.trim() || "Untitled",
@@ -331,15 +329,13 @@ async function runFilter() {
   const maxHoursRaw = $("max_hours").value;
 
   if (!profilePayload.intent) {
-    showError("Write what you are looking for in the Intent box.");
+    showError("Write your intent.");
     runBtn.disabled = false;
-    $("hint").textContent = "AI classifies, extracts contacts, applies filters.";
     return;
   }
   if (!paste) {
     showError("Paste at least one message.");
     runBtn.disabled = false;
-    $("hint").textContent = "AI classifies, extracts contacts, applies filters.";
     return;
   }
 
@@ -349,7 +345,7 @@ async function runFilter() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(profilePayload),
     });
-    if (!profileRes.ok) throw new Error((await profileRes.text()) || "Failed to create profile");
+    if (!profileRes.ok) throw new Error(await readError(profileRes));
     const profile = await profileRes.json();
 
     const filterRes = await fetch("/filter/run", {
@@ -365,13 +361,13 @@ async function runFilter() {
         require_name: $("require_name").checked,
       }),
     });
-    if (!filterRes.ok) throw new Error((await filterRes.text()) || "Filter failed");
+    if (!filterRes.ok) throw new Error(await readError(filterRes));
     const data = await filterRes.json();
     renderResults(data);
-    $("hint").textContent = `Done on ${platformLabel(source)} · Profile #${profile.id}`;
+    $("hint").textContent = `Done · Profile #${profile.id}`;
   } catch (err) {
     showError(err.message || "Something went wrong");
-    $("hint").textContent = "AI classifies, extracts contacts, applies filters.";
+    $("hint").textContent = "Fix the error and try again.";
   } finally {
     runBtn.disabled = false;
   }
@@ -388,5 +384,5 @@ https://www.linkedin.com/posts/example-spam
 2d: Need someone onsite in Lahore to fix AC unit tomorrow morning. Call 042-111222333
 https://www.linkedin.com/posts/example-ac`;
 
-setPlatform("linkedin");
+setPlatform("all");
 checkHealth();

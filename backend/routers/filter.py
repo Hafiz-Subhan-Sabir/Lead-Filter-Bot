@@ -5,6 +5,7 @@ from database import get_db
 from schemas import AIDecision, FilterRequest, FilterResponse, ProfileCreate, ResultOut
 from services import storage
 from services.ai_filter import classify_message
+from services.platform_detect import resolve_item_platform
 from services.splitter import ParsedItem, split_into_items
 
 router = APIRouter(prefix="/filter", tags=["filter"])
@@ -37,6 +38,7 @@ def decision_to_result(
         is_lead=decision.is_lead,
         confidence=decision.confidence,
         reason=decision.reason,
+        genuine_score=decision.genuine_score,
         contact_name=ext.contact_name,
         uploader_name=ext.uploader_name,
         email=email,
@@ -86,18 +88,22 @@ def run_filter(body: FilterRequest, db: Session = Depends(get_db)):
     )
 
     chunks: list[ParsedItem] = split_into_items(body.text)
+    if not chunks:
+        raise HTTPException(status_code=400, detail="No valid posts found in paste text")
+
     matches: list[ResultOut] = []
     rejected: list[ResultOut] = []
     filtered_out = 0
 
     for chunk in chunks:
+        item_platform = resolve_item_platform(body.source, chunk.url)
         item = storage.save_item(
             db,
             chunk.text,
-            source=body.source,
+            source=item_platform,
             url=chunk.url,
         )
-        decision = classify_message(profile_data, chunk.text, platform=body.source)
+        decision = classify_message(profile_data, chunk.text, platform=item_platform)
         if chunk.hours_ago_hint is not None and decision.extracted.hours_ago_estimate is None:
             decision.extracted.hours_ago_estimate = chunk.hours_ago_hint
 
@@ -114,12 +120,22 @@ def run_filter(body: FilterRequest, db: Session = Depends(get_db)):
 
         if not passes_soft_filters(body, out):
             filtered_out += 1
+            # still keep in rejected list so UI isn't empty / confusing
+            out.is_match = False
+            if out.reason and "filtered" not in out.reason.lower():
+                out.reason = f"{out.reason} (removed by time/contact filters)"
+            else:
+                out.reason = "Removed by time/contact filters"
+            rejected.append(out)
             continue
 
         if result.is_match:
             matches.append(out)
         else:
             rejected.append(out)
+
+    # Sort matches by genuine_score then confidence
+    matches.sort(key=lambda r: (r.genuine_score, r.confidence), reverse=True)
 
     return FilterResponse(
         total_items=len(chunks),
