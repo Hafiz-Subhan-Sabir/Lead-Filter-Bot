@@ -2,14 +2,15 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Project root (lead-filter-bot/) so .env works whether you run from root or backend/
 _ROOT = Path(__file__).resolve().parent.parent
+_DB_PATH = _ROOT / "lead_filter.db"
 
 
 class Settings(BaseSettings):
     openai_api_key: str = "sk-your-key-here"
     openai_model: str = "gpt-4o-mini"
-    database_url: str = "sqlite:///./lead_filter.db"
+    # Absolute path so SQLite works no matter what Working directory PA uses
+    database_url: str = f"sqlite:///{_DB_PATH.as_posix()}"
 
     model_config = SettingsConfigDict(
         env_file=str(_ROOT / ".env"),

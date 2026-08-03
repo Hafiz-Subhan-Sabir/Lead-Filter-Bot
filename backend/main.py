@@ -1,4 +1,3 @@
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -10,23 +9,18 @@ from routers import filter, profiles
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
-
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    init_db()
-    yield
-
+# Init DB at import time (more reliable than lifespan under a2wsgi on PythonAnywhere)
+init_db()
 
 app = FastAPI(
     title="Lead Filter Bot",
     version="0.1.0",
-    lifespan=lifespan,
 )
 
 app.include_router(profiles.router)
 app.include_router(filter.router)
 
-app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
 
 @app.get("/health")

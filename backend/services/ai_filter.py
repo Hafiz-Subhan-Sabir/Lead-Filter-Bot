@@ -6,10 +6,17 @@ from openai import OpenAI
 from config import settings
 from schemas import AIDecision, ProfileCreate
 
-client = OpenAI(api_key=settings.openai_api_key)
-
 PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "filter_system.txt"
 SYSTEM_PROMPT = PROMPT_PATH.read_text(encoding="utf-8")
+
+_client: OpenAI | None = None
+
+
+def get_client() -> OpenAI:
+    global _client
+    if _client is None:
+        _client = OpenAI(api_key=settings.openai_api_key)
+    return _client
 
 
 def build_user_prompt(profile: ProfileCreate, message: str) -> str:
@@ -37,7 +44,7 @@ confidence, reason, extracted
 
 
 def classify_message(profile: ProfileCreate, message: str) -> AIDecision:
-    response = client.chat.completions.create(
+    response = get_client().chat.completions.create(
         model=settings.openai_model,
         temperature=0,
         response_format={"type": "json_object"},
