@@ -10,13 +10,14 @@ from pydantic import ValidationError
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
+from config import settings  # noqa: E402
 from database import SessionLocal, init_db  # noqa: E402
 from routers.discover import DiscoverRequest  # noqa: E402
 from routers.filter import decision_to_result, passes_soft_filters  # noqa: E402
 from schemas import FilterRequest, ProfileCreate  # noqa: E402
 from services import storage  # noqa: E402
 from services.ai_filter import classify_message  # noqa: E402
-from services.discover import discover_items  # noqa: E402
+from services.discover import discover_items, rerank_matches_with_ai  # noqa: E402
 from services.platform_detect import resolve_item_platform  # noqa: E402
 from services.splitter import ParsedItem, split_into_items  # noqa: E402
 
@@ -273,6 +274,10 @@ def run_discover():
                 hours_hint=chunk.hours_ago_hint,
             )
 
+            if body.deep and out.is_match and out.genuine_score < settings.discover_min_genuine:
+                out.is_match = False
+                out.reason = f"{(out.reason or '').strip()} (below genuineness threshold)".strip()
+
             if not passes_soft_filters(soft, out):
                 filtered_out += 1
                 out.is_match = False
@@ -281,15 +286,27 @@ def run_discover():
                 continue
 
             payload = out.model_dump()
-            if result.is_match:
+            if out.is_match and result.is_match:
                 matches.append(payload)
             else:
                 rejected.append(payload)
 
-        matches.sort(
-            key=lambda r: (r.get("genuine_score", 0), r.get("confidence", 0)),
-            reverse=True,
-        )
+        if body.deep and matches:
+            matches = rerank_matches_with_ai(profile.intent, matches)
+            strong = []
+            for m in matches:
+                if float(m.get("genuine_score") or 0) >= settings.discover_min_genuine:
+                    strong.append(m)
+                else:
+                    m["is_match"] = False
+                    m["reason"] = f"{m.get('reason') or ''} (reranked as weak)".strip()
+                    rejected.append(m)
+            matches = strong
+        else:
+            matches.sort(
+                key=lambda r: (r.get("genuine_score", 0), r.get("confidence", 0)),
+                reverse=True,
+            )
 
         return jsonify(
             {

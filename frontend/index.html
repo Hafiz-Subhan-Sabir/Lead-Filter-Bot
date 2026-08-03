@@ -7,64 +7,58 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Newsreader:opsz,wght@6..72,600;6..72,700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
+    <div class="bg-orb orb-a" aria-hidden="true"></div>
+    <div class="bg-orb orb-b" aria-hidden="true"></div>
+
     <div class="shell">
       <header class="header">
-        <div>
-          <p class="eyebrow">Lead Filter Bot</p>
-          <h1>It searches platforms for you</h1>
-          <p class="sub">
-            Enter what you want. The bot searches public listings across selected
-            platforms, filters for genuine matches, and shows results.
-          </p>
+        <div class="brand">
+          <div class="logo-mark">LF</div>
+          <div>
+            <p class="eyebrow">Lead Filter Bot</p>
+            <h1>Deep search. Real leads.</h1>
+            <p class="sub">
+              Multi-pass platform search with genuineness ranking. Takes about
+              <strong>3–5 minutes</strong> for higher accuracy.
+            </p>
+          </div>
         </div>
         <div class="header-side">
-          <div class="status" id="apiStatus">Checking API…</div>
-          <div class="looking-pill">Looking on: <strong id="lookingLabel">All Platforms</strong></div>
+          <div class="status" id="apiStatus">Checking…</div>
+          <div class="looking-pill">Target: <strong id="lookingLabel">All Platforms</strong></div>
         </div>
       </header>
 
       <main class="layout">
         <section class="panel form-panel">
-          <div class="step">
-            <span class="step-num">1</span>
-            <div>
-              <h2>Where should it look?</h2>
-              <p class="step-help">One platform or All Platforms (public web results).</p>
-            </div>
-          </div>
+          <div class="panel-label">Search setup</div>
 
+          <h2 class="section-title">Platforms</h2>
           <div class="platform-grid" id="platformGrid">
-            <button type="button" class="platform-chip active" data-platform="all">All Platforms</button>
+            <button type="button" class="platform-chip active" data-platform="all">All</button>
             <button type="button" class="platform-chip" data-platform="linkedin">LinkedIn</button>
-            <button type="button" class="platform-chip" data-platform="whatsapp">WhatsApp</button>
             <button type="button" class="platform-chip" data-platform="upwork">Upwork</button>
             <button type="button" class="platform-chip" data-platform="fiverr">Fiverr</button>
             <button type="button" class="platform-chip" data-platform="facebook">Facebook</button>
             <button type="button" class="platform-chip" data-platform="instagram">Instagram</button>
-            <button type="button" class="platform-chip" data-platform="google_maps">Google Maps</button>
-            <button type="button" class="platform-chip" data-platform="other">Other / Web</button>
+            <button type="button" class="platform-chip" data-platform="whatsapp">WhatsApp</button>
+            <button type="button" class="platform-chip" data-platform="google_maps">Maps</button>
+            <button type="button" class="platform-chip" data-platform="other">Web</button>
           </div>
           <input type="hidden" id="platform" value="all" />
 
-          <div class="step">
-            <span class="step-num">2</span>
-            <div>
-              <h2>What do you want to find?</h2>
-              <p class="step-help">Only your intent is required — no posts to paste.</p>
-            </div>
-          </div>
+          <h2 class="section-title">Your intent</h2>
+          <label for="name">Label (optional)</label>
+          <input id="name" type="text" placeholder="e.g. Website hire leads" />
 
-          <label for="name">Profile name</label>
-          <input id="name" type="text" placeholder="Optional label" value="" />
-
-          <label for="intent">Intent</label>
-          <textarea id="intent" rows="3" placeholder="e.g. businesses looking to hire someone to develop a website"></textarea>
+          <label for="intent">What should it find?</label>
+          <textarea id="intent" rows="4" placeholder="Describe the exact lead you want…"></textarea>
 
           <div class="flags">
             <label class="check"><input type="checkbox" id="want_remote" /> Remote</label>
@@ -76,15 +70,13 @@
 
           <div class="adv-grid">
             <div>
-              <label for="min_confidence">Min confidence <strong id="confLabel">0.70</strong></label>
-              <input id="min_confidence" type="range" min="0.5" max="0.95" step="0.05" value="0.7" />
+              <label for="min_confidence">Confidence <strong id="confLabel">0.75</strong></label>
+              <input id="min_confidence" type="range" min="0.55" max="0.95" step="0.05" value="0.75" />
             </div>
             <div>
-              <label for="max_hours">Posted within</label>
+              <label for="max_hours">Time window</label>
               <select id="max_hours">
                 <option value="" selected>Any time</option>
-                <option value="6">Last 6 hours</option>
-                <option value="12">Last 12 hours</option>
                 <option value="24">Last 24 hours</option>
                 <option value="72">Last 3 days</option>
                 <option value="168">Last 7 days</option>
@@ -93,74 +85,70 @@
           </div>
 
           <div class="flags contact-flags">
-            <label class="check"><input type="checkbox" id="require_email" /> Must have email</label>
-            <label class="check"><input type="checkbox" id="require_phone" /> Must have phone</label>
-            <label class="check"><input type="checkbox" id="require_name" /> Must have name</label>
+            <label class="check"><input type="checkbox" id="require_email" /> Email</label>
+            <label class="check"><input type="checkbox" id="require_phone" /> Phone</label>
+            <label class="check"><input type="checkbox" id="require_name" /> Name</label>
           </div>
 
           <div class="actions">
-            <button id="runBtn" type="button">Find leads automatically</button>
-            <p class="hint" id="hint">Searches platforms from your intent, then filters.</p>
+            <button id="runBtn" type="button">Start deep search</button>
+            <p class="hint" id="hint">Expect 3–5 minutes for thorough results.</p>
           </div>
           <p class="error" id="error" hidden></p>
-          <p class="limit-note">
-            Searches <strong>public</strong> web results on those platforms.
-            Private WhatsApp/LinkedIn groups need official access and cannot be scraped.
-          </p>
 
           <details class="optional-paste">
-            <summary>Optional: also include pasted posts</summary>
-            <label for="paste">Extra messages (optional)</label>
-            <textarea
-              id="paste"
-              rows="5"
-              placeholder="Only if you already have posts. Leave empty for full auto search."
-            ></textarea>
+            <summary>Optional: add extra pasted posts</summary>
+            <textarea id="paste" rows="4" placeholder="Leave empty for full automatic search."></textarea>
           </details>
         </section>
 
         <section class="panel results-panel">
           <div class="results-head">
             <div>
-              <h2>Results</h2>
-              <p class="meta" id="summary">Waiting for your intent…</p>
+              <div class="panel-label">Live results</div>
+              <h2 class="section-title tight">Output</h2>
+              <p class="meta" id="summary">Ready when you are.</p>
             </div>
-            <div class="source-tag" id="sourceTag">Platform: All Platforms</div>
+            <div class="source-tag" id="sourceTag">All Platforms</div>
           </div>
 
           <div class="loading-panel" id="loadingPanel" hidden>
             <div class="loading-top">
-              <div class="spinner" aria-hidden="true"></div>
+              <div class="spinner"></div>
               <div>
-                <p class="loading-title" id="loadingTitle">Working…</p>
-                <p class="loading-sub" id="loadingSub">Please wait</p>
+                <p class="loading-title" id="loadingTitle">Deep search running…</p>
+                <p class="loading-sub" id="loadingSub">This usually takes 3–5 minutes</p>
+              </div>
+              <div class="timer-box">
+                <span id="elapsedTimer">0:00</span>
+                <small>elapsed</small>
               </div>
             </div>
             <div class="progress-track">
               <div class="progress-bar" id="progressBar"></div>
             </div>
             <ol class="stage-list" id="stageList">
-              <li data-stage="profile">Saving your intent</li>
-              <li data-stage="search">Searching platforms</li>
-              <li data-stage="ai">AI matching &amp; contact extraction</li>
-              <li data-stage="filters">Applying filters</li>
-              <li data-stage="rank">Ranking genuine leads</li>
+              <li data-stage="profile">Save intent profile</li>
+              <li data-stage="search">Multi-pass platform search</li>
+              <li data-stage="ai">AI classify each candidate</li>
+              <li data-stage="filters">Strict genuineness filters</li>
+              <li data-stage="rank">Final ranking</li>
             </ol>
           </div>
 
           <div id="resultsWrap">
             <div class="empty-state" id="emptyState">
-              <p>No results yet.</p>
-              <p class="muted">Type your intent, pick platforms, then hit <strong>Find leads automatically</strong>.</p>
+              <div class="empty-icon">◎</div>
+              <p>No results yet</p>
+              <p class="muted">Enter intent → Start deep search → wait for ranked leads.</p>
             </div>
 
             <div id="resultsContent" hidden>
               <div class="toolbar">
-                <label class="check"><input type="checkbox" id="selectAll" /> Select all visible</label>
-                <button type="button" class="ghost-btn" id="inspectBtn" disabled>Inspect selected</button>
+                <label class="check"><input type="checkbox" id="selectAll" /> Select all</label>
+                <button type="button" class="ghost-btn" id="inspectBtn" disabled>Inspect</button>
                 <button type="button" class="ghost-btn" id="copyEmailsBtn" disabled>Copy emails</button>
               </div>
-
               <div class="tabs">
                 <button class="tab active" data-tab="matches" type="button">
                   Matches <span id="matchCount">0</span>
@@ -169,7 +157,6 @@
                   Rejected <span id="rejectCount">0</span>
                 </button>
               </div>
-
               <div id="matchesList" class="list"></div>
               <div id="rejectedList" class="list" hidden></div>
             </div>
@@ -182,7 +169,7 @@
       <div class="drawer-backdrop" id="drawerBackdrop"></div>
       <div class="drawer-panel">
         <div class="drawer-head">
-          <h2>Selected leads</h2>
+          <h2>Lead details</h2>
           <button type="button" class="ghost-btn" id="closeDrawer">Close</button>
         </div>
         <div id="drawerBody" class="drawer-body"></div>

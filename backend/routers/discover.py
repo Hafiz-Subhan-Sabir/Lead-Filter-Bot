@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from config import settings
 from database import get_db
 from routers.filter import decision_to_result, passes_soft_filters
 from schemas import FilterRequest, FilterResponse, ProfileCreate, ResultOut
 from services import storage
 from services.ai_filter import classify_message
-from services.discover import discover_items
+from services.discover import discover_items, rerank_matches_with_ai
 from services.splitter import ParsedItem, split_into_items
 
 router = APIRouter(prefix="/discover", tags=["discover"])
@@ -20,9 +21,9 @@ class DiscoverRequest(BaseModel):
     require_email: bool = False
     require_phone: bool = False
     require_name: bool = False
-    # Optional extra posts the user still wants mixed in
     extra_text: str = ""
-    max_results: int = Field(default=20, ge=1, le=40)
+    max_results: int = Field(default=40, ge=5, le=60)
+    deep: bool = True
 
 
 @router.post("/run", response_model=FilterResponse)
@@ -44,10 +45,8 @@ def run_discover(body: DiscoverRequest, db: Session = Depends(get_db)):
 
     discovered = discover_items(profile.intent, body.source)
     chunks: list[ParsedItem] = [
-        ParsedItem(text=d.text, url=d.url, hours_ago_hint=None)
-        for d in discovered
+        ParsedItem(text=d.text, url=d.url, hours_ago_hint=None) for d in discovered
     ]
-    # Keep platform labels from discovery
     platforms = [d.source for d in discovered]
 
     if body.extra_text.strip():
@@ -59,8 +58,8 @@ def run_discover(body: DiscoverRequest, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=404,
             detail=(
-                "No public posts found for this intent/platform. "
-                "Try a clearer intent, another platform, or add Brave/SerpAPI key in .env."
+                "No public posts found. Try a clearer intent, another platform, "
+                "or add BRAVE_API_KEY / SERPAPI_KEY in .env for stronger search."
             ),
         )
 
@@ -89,9 +88,6 @@ def run_discover(body: DiscoverRequest, db: Session = Depends(get_db)):
             url=chunk.url,
         )
         decision = classify_message(profile_data, chunk.text, platform=item_platform)
-        if chunk.hours_ago_hint is not None and decision.extracted.hours_ago_estimate is None:
-            decision.extracted.hours_ago_estimate = chunk.hours_ago_hint
-
         result = storage.save_result(db, item, profile, decision)
         out = decision_to_result(
             item_id=item.id,
@@ -103,6 +99,11 @@ def run_discover(body: DiscoverRequest, db: Session = Depends(get_db)):
             hours_hint=chunk.hours_ago_hint,
         )
 
+        # Stricter accuracy gate for deep mode
+        if body.deep and out.is_match and out.genuine_score < settings.discover_min_genuine:
+            out.is_match = False
+            out.reason = f"{(out.reason or '').strip()} (below genuineness threshold)".strip()
+
         if not passes_soft_filters(soft, out):
             filtered_out += 1
             out.is_match = False
@@ -110,12 +111,28 @@ def run_discover(body: DiscoverRequest, db: Session = Depends(get_db)):
             rejected.append(out)
             continue
 
-        if result.is_match:
+        if out.is_match and result.is_match:
             matches.append(out)
         else:
             rejected.append(out)
 
-    matches.sort(key=lambda r: (r.genuine_score, r.confidence), reverse=True)
+    match_dicts = [m.model_dump() for m in matches]
+    if body.deep and match_dicts:
+        match_dicts = rerank_matches_with_ai(profile.intent, match_dicts)
+        # Drop weak after rerank
+        strong = []
+        weak = []
+        for m in match_dicts:
+            if float(m.get("genuine_score") or 0) >= settings.discover_min_genuine:
+                strong.append(ResultOut.model_validate(m))
+            else:
+                m["is_match"] = False
+                m["reason"] = f"{m.get('reason') or ''} (reranked as weak)".strip()
+                weak.append(ResultOut.model_validate(m))
+        matches = strong
+        rejected.extend(weak)
+    else:
+        matches.sort(key=lambda r: (r.genuine_score, r.confidence), reverse=True)
 
     return FilterResponse(
         total_items=limit,

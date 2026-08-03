@@ -10,10 +10,13 @@ class Settings(BaseSettings):
     openai_api_key: str = "sk-your-key-here"
     openai_model: str = "gpt-4o-mini"
     database_url: str = f"sqlite:///{_DB_PATH.as_posix()}"
-    # Optional: better discovery than free DuckDuckGo
     brave_api_key: str = ""
     serpapi_key: str = ""
-    discover_max_results: int = 12
+    # Deep search defaults (multi-pass, ~3–5 minutes)
+    discover_max_results: int = 40
+    discover_queries_per_platform: int = 3
+    discover_pause_seconds: float = 8.0
+    discover_min_genuine: float = 55.0
 
     model_config = SettingsConfigDict(
         env_file=str(_ROOT / ".env"),

@@ -9,20 +9,22 @@ const PLATFORM_LABELS = {
   facebook: "Facebook",
   instagram: "Instagram",
   google_maps: "Google Maps",
-  other: "Other / Web",
+  other: "Web",
 };
 
 const STAGES = [
-  { id: "profile", title: "Saving your intent", sub: "Creating search profile…", pct: 12 },
-  { id: "search", title: "Searching platforms", sub: "Looking through public listings…", pct: 40 },
-  { id: "ai", title: "AI matching & contacts", sub: "Checking genuineness…", pct: 70 },
-  { id: "filters", title: "Applying filters", sub: "Time + contact rules…", pct: 88 },
-  { id: "rank", title: "Ranking genuine leads", sub: "Preparing final results…", pct: 97 },
+  { id: "profile", title: "Saving intent profile", sub: "Preparing deep search…", pct: 8 },
+  { id: "search", title: "Multi-pass platform search", sub: "Querying platforms thoroughly…", pct: 35 },
+  { id: "ai", title: "AI classifying candidates", sub: "Scoring genuineness one by one…", pct: 68 },
+  { id: "filters", title: "Strict quality filters", sub: "Removing weak / spam results…", pct: 86 },
+  { id: "rank", title: "Final ranking", sub: "Ordering best leads first…", pct: 96 },
 ];
 
 let itemIndex = {};
 const selectedIds = new Set();
 let stageTimer = null;
+let elapsedTimer = null;
+let searchStartedAt = 0;
 
 const apiStatus = $("apiStatus");
 const errorEl = $("error");
@@ -48,39 +50,34 @@ const resultsContent = $("resultsContent");
 const progressBar = $("progressBar");
 const loadingTitle = $("loadingTitle");
 const loadingSub = $("loadingSub");
+const elapsedEl = $("elapsedTimer");
 
 function currentPlatform() {
   return platformInput.value || "all";
 }
-
 function platformLabel(key) {
   return PLATFORM_LABELS[key] || key || "Unknown";
 }
-
 function setPlatform(key) {
   platformInput.value = key;
   lookingLabel.textContent = platformLabel(key);
-  sourceTag.textContent = `Platform: ${platformLabel(key)}`;
+  sourceTag.textContent = platformLabel(key);
   document.querySelectorAll(".platform-chip").forEach((chip) => {
     chip.classList.toggle("active", chip.dataset.platform === key);
   });
 }
-
 document.querySelectorAll(".platform-chip").forEach((chip) => {
   chip.addEventListener("click", () => setPlatform(chip.dataset.platform));
 });
-
 confInput.addEventListener("input", () => {
   confLabel.textContent = Number(confInput.value).toFixed(2);
 });
-
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
     tab.classList.add("active");
-    const which = tab.dataset.tab;
-    matchesList.hidden = which !== "matches";
-    rejectedList.hidden = which !== "rejected";
+    matchesList.hidden = tab.dataset.tab !== "matches";
+    rejectedList.hidden = tab.dataset.tab !== "rejected";
     selectAll.checked = false;
     syncSelectionButtons();
   });
@@ -89,7 +86,7 @@ document.querySelectorAll(".tab").forEach((tab) => {
 async function checkHealth() {
   try {
     const res = await fetch("/health");
-    if (!res.ok) throw new Error("API down");
+    if (!res.ok) throw new Error("down");
     apiStatus.textContent = "API online";
     apiStatus.className = "status ok";
   } catch {
@@ -114,15 +111,22 @@ async function readError(res) {
   }
 }
 
+function formatElapsed(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
+}
+
 function setStage(stageId) {
   const stage = STAGES.find((s) => s.id === stageId) || STAGES[0];
   loadingTitle.textContent = stage.title;
-  loadingSub.textContent = stage.sub;
+  const elapsed = formatElapsed(Date.now() - searchStartedAt);
+  loadingSub.textContent = `${stage.sub} · ${elapsed} elapsed (target 3–5 min)`;
   progressBar.style.width = `${stage.pct}%`;
   document.querySelectorAll("#stageList li").forEach((li) => {
-    const id = li.dataset.stage;
     li.classList.remove("active", "done");
-    const idx = STAGES.findIndex((s) => s.id === id);
+    const idx = STAGES.findIndex((s) => s.id === li.dataset.stage);
     const cur = STAGES.findIndex((s) => s.id === stageId);
     if (idx < cur) li.classList.add("done");
     if (idx === cur) li.classList.add("active");
@@ -133,14 +137,23 @@ function startLoadingVisual() {
   emptyState.hidden = true;
   resultsContent.hidden = true;
   loadingPanel.hidden = false;
-  progressBar.style.width = "8%";
+  progressBar.style.width = "6%";
+  searchStartedAt = Date.now();
+  elapsedEl.textContent = "0:00";
   setStage("profile");
+
+  clearInterval(elapsedTimer);
+  elapsedTimer = setInterval(() => {
+    elapsedEl.textContent = formatElapsed(Date.now() - searchStartedAt);
+  }, 1000);
+
   let i = 0;
   clearInterval(stageTimer);
+  // Slow visual stage advances to match deep search duration
   stageTimer = setInterval(() => {
     i = Math.min(i + 1, STAGES.length - 2);
     setStage(STAGES[i].id);
-  }, 1600);
+  }, 45000);
 }
 
 function finishLoadingVisual() {
@@ -152,7 +165,9 @@ function finishLoadingVisual() {
 
 function stopLoadingVisual(showEmpty) {
   clearInterval(stageTimer);
+  clearInterval(elapsedTimer);
   stageTimer = null;
+  elapsedTimer = null;
   loadingPanel.hidden = true;
   if (showEmpty) {
     emptyState.hidden = false;
@@ -171,7 +186,7 @@ function syncSelectionButtons() {
   const n = selectedIds.size;
   inspectBtn.disabled = n === 0;
   copyEmailsBtn.disabled = n === 0;
-  inspectBtn.textContent = n ? `Inspect selected (${n})` : "Inspect selected";
+  inspectBtn.textContent = n ? `Inspect (${n})` : "Inspect";
 }
 
 function toggleSelect(id, checked) {
@@ -185,8 +200,7 @@ function visibleList() {
 }
 
 selectAll.addEventListener("change", () => {
-  const boxes = visibleList().querySelectorAll('input[type="checkbox"][data-id]');
-  boxes.forEach((box) => {
+  visibleList().querySelectorAll('input[type="checkbox"][data-id]').forEach((box) => {
     box.checked = selectAll.checked;
     toggleSelect(Number(box.dataset.id), selectAll.checked);
   });
@@ -214,34 +228,26 @@ function renderCard(item, isMatch) {
   itemIndex[item.item_id] = item;
   const card = document.createElement("article");
   card.className = `card ${isMatch ? "match" : "reject"}`;
-
   const head = document.createElement("div");
   head.className = "card-head";
-
   const cb = document.createElement("input");
   cb.type = "checkbox";
   cb.dataset.id = String(item.item_id);
   cb.checked = selectedIds.has(item.item_id);
   cb.addEventListener("change", () => toggleSelect(item.item_id, cb.checked));
-
   const body = document.createElement("div");
   body.style.flex = "1";
-
   const top = document.createElement("div");
   top.className = "card-top";
   top.appendChild(badge(platformLabel(item.source), "platform"));
   top.appendChild(badge(item.category || "unknown", isMatch ? "accent" : ""));
   top.appendChild(badge(`genuine ${Math.round(item.genuine_score || 0)}`, "genuine"));
-  top.appendChild(badge(`confidence ${(item.confidence ?? 0).toFixed(2)}`));
-  if (item.has_contact) top.appendChild(badge("contact", "accent"));
-
+  top.appendChild(badge(`${(item.confidence ?? 0).toFixed(2)} conf`));
   const text = document.createElement("p");
   text.textContent = item.raw_text;
-
   const reason = document.createElement("p");
   reason.className = "reason";
   reason.textContent = item.reason || "";
-
   const contacts = contactLines(item);
   let contactBox = null;
   if (contacts.length) {
@@ -249,16 +255,14 @@ function renderCard(item, isMatch) {
     contactBox.className = "contact-box";
     contactBox.innerHTML = `<div class="row">${contacts.join("")}</div>`;
   }
-
   const footer = document.createElement("div");
   footer.className = "card-footer";
-
   const inspectOne = document.createElement("button");
   inspectOne.type = "button";
   inspectOne.className = "ghost-btn";
-  inspectOne.textContent = "View details";
+  inspectOne.textContent = "Details";
   inspectOne.addEventListener("click", () => openDrawer([item]));
-
+  footer.appendChild(inspectOne);
   if (item.url) {
     const link = document.createElement("a");
     link.className = "open-link";
@@ -266,11 +270,8 @@ function renderCard(item, isMatch) {
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     link.textContent = "Open source →";
-    footer.append(inspectOne, link);
-  } else {
-    footer.append(inspectOne);
+    footer.appendChild(link);
   }
-
   body.append(top, text, reason);
   if (contactBox) body.appendChild(contactBox);
   body.appendChild(footer);
@@ -286,33 +287,32 @@ function renderResults(data) {
   selectedIds.clear();
   selectAll.checked = false;
   syncSelectionButtons();
+  clearInterval(elapsedTimer);
 
   const matches = data.matches || [];
   const rejected = data.rejected || [];
   const source = data.source || currentPlatform();
-  const filteredOut = data.filtered_out || 0;
+  const elapsed = formatElapsed(Date.now() - searchStartedAt);
 
-  sourceTag.textContent = `Platform: ${platformLabel(source)}`;
+  sourceTag.textContent = platformLabel(source);
   matchCount.textContent = String(matches.length);
   rejectCount.textContent = String(rejected.length);
-  summary.textContent = `${data.total_items} found · ${matches.length} match · ${rejected.length} rejected${filteredOut ? ` · ${filteredOut} filtered` : ""}`;
+  summary.textContent = `${data.total_items} scanned · ${matches.length} strong matches · ${rejected.length} rejected · ${elapsed}`;
 
   emptyState.hidden = true;
   resultsContent.hidden = false;
   loadingPanel.hidden = true;
 
   if (!matches.length) {
-    matchesList.innerHTML = `<p class="empty">No strong matches. Try a clearer intent or turn off strict contact filters.</p>`;
+    matchesList.innerHTML = `<p class="empty">No strong matches after deep filtering. Try a clearer intent.</p>`;
   } else {
     matches.forEach((m) => matchesList.appendChild(renderCard(m, true)));
   }
-
   if (!rejected.length) {
     rejectedList.innerHTML = `<p class="empty">Nothing rejected.</p>`;
   } else {
     rejected.forEach((m) => rejectedList.appendChild(renderCard(m, false)));
   }
-
   document.querySelector('.tab[data-tab="matches"]').click();
 }
 
@@ -328,7 +328,6 @@ function openDrawer(items) {
       <p><strong>Genuine:</strong> ${Math.round(item.genuine_score || 0)} / 100</p>
       <p><strong>Email:</strong> ${escapeHtml(item.email || "—")}</p>
       <p><strong>Phone:</strong> ${escapeHtml(item.phone || "—")}</p>
-      <p><strong>Company:</strong> ${escapeHtml(item.company_name || "—")}</p>
       <p class="muted">${escapeHtml(item.raw_text)}</p>
       <p class="muted">${escapeHtml(item.reason || "")}</p>
       ${item.url ? `<p><a class="open-link" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Open source →</a></p>` : ""}
@@ -345,7 +344,6 @@ function closeDrawer() {
 inspectBtn.addEventListener("click", () => {
   openDrawer([...selectedIds].map((id) => itemIndex[id]).filter(Boolean));
 });
-
 copyEmailsBtn.addEventListener("click", async () => {
   const emails = [...selectedIds]
     .map((id) => itemIndex[id])
@@ -353,20 +351,19 @@ copyEmailsBtn.addEventListener("click", async () => {
     .flatMap((i) => (i.emails?.length ? i.emails : i.email ? [i.email] : []));
   const unique = [...new Set(emails)];
   if (!unique.length) {
-    showError("No emails in the selected leads.");
+    showError("No emails in selected leads.");
     return;
   }
   await navigator.clipboard.writeText(unique.join("\n"));
   $("hint").textContent = `Copied ${unique.length} email(s).`;
 });
-
 $("closeDrawer").addEventListener("click", closeDrawer);
 $("drawerBackdrop").addEventListener("click", closeDrawer);
 
 async function runDiscover() {
   showError("");
   const profilePayload = {
-    name: $("name").value.trim() || "Search",
+    name: $("name").value.trim() || "Deep search",
     intent: $("intent").value.trim(),
     want_remote: $("want_remote").checked,
     want_onsite: $("want_onsite").checked,
@@ -375,19 +372,18 @@ async function runDiscover() {
     want_no_website: $("want_no_website").checked,
     min_confidence: Number(confInput.value),
   };
-
   const source = currentPlatform();
   const maxHoursRaw = $("max_hours").value;
   const extra = ($("paste")?.value || "").trim();
 
   if (!profilePayload.intent) {
-    showError("Enter what you want to find (intent).");
+    showError("Enter what you want to find.");
     return;
   }
 
   runBtn.disabled = true;
-  $("hint").textContent = "Searching platforms…";
-  summary.textContent = "Looking across platforms…";
+  $("hint").textContent = "Deep search running — keep this tab open…";
+  summary.textContent = "Deep search in progress (3–5 min)…";
   startLoadingVisual();
 
   try {
@@ -412,21 +408,21 @@ async function runDiscover() {
         require_phone: $("require_phone").checked,
         require_name: $("require_name").checked,
         extra_text: extra,
-        max_results: 20,
+        max_results: 40,
+        deep: true,
       }),
     });
     if (!discoverRes.ok) throw new Error(await readError(discoverRes));
-
     setStage("ai");
     const data = await discoverRes.json();
     setStage("filters");
     finishLoadingVisual();
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 400));
     renderResults(data);
-    $("hint").textContent = `Done · ${data.matches?.length || 0} match(es) from auto search`;
+    $("hint").textContent = `Done · ${data.matches?.length || 0} strong match(es)`;
   } catch (err) {
     stopLoadingVisual(true);
-    summary.textContent = "Waiting for your intent…";
+    summary.textContent = "Ready when you are.";
     showError(err.message || "Search failed");
     $("hint").textContent = "Try again with a clearer intent.";
   } finally {
@@ -435,7 +431,6 @@ async function runDiscover() {
 }
 
 runBtn.addEventListener("click", runDiscover);
-
 $("paste").value = "";
 $("intent").value = "";
 $("name").value = "";

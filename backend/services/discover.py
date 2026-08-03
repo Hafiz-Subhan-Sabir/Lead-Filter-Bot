@@ -1,15 +1,15 @@
 """
-Public platform discovery — finds posts/listings via web search.
+Deep public platform discovery — multi-pass search for higher accuracy.
 
-Does NOT log into private LinkedIn/WhatsApp/Facebook groups.
-Searches the public web for pages on those platforms matching the intent.
+Takes longer on purpose (multi-query + paced requests + AI ranking).
+Does NOT log into private groups.
 """
 from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass
-from urllib.parse import quote_plus
 
 import httpx
 from openai import OpenAI
@@ -38,6 +38,18 @@ ALL_PLATFORMS = [
     "other",
 ]
 
+# Prefer platforms that usually have public hiring signal first
+PRIORITY_WHEN_ALL = [
+    "upwork",
+    "linkedin",
+    "fiverr",
+    "facebook",
+    "other",
+    "google_maps",
+    "instagram",
+    "whatsapp",
+]
+
 
 @dataclass
 class DiscoveredItem:
@@ -48,55 +60,71 @@ class DiscoveredItem:
 
 
 def _client() -> OpenAI:
-    return OpenAI(api_key=settings.openai_api_key, timeout=45.0)
+    return OpenAI(api_key=settings.openai_api_key, timeout=60.0)
 
 
 def build_search_queries(intent: str, platform: str) -> list[tuple[str, str]]:
+    """Multiple queries per platform for deeper coverage."""
     intent = re.sub(r"\s+", " ", intent.strip())
-    platforms = ALL_PLATFORMS if platform == "all" else [platform]
+    if platform == "all":
+        platforms = PRIORITY_WHEN_ALL[:5]
+    else:
+        platforms = [platform]
 
-    crafted: dict[str, str] = {}
+    n = max(2, settings.discover_queries_per_platform)
+    crafted: dict[str, list[str]] = {}
     try:
-        prompt = f"""Create one short Google-style search query per platform to find REAL public hiring/lead posts.
+        prompt = f"""Create {n} different high-precision Google-style search queries per platform
+to find GENUINE public hiring / lead posts (not spam, not courses).
+
 USER INTENT: {intent}
 PLATFORMS: {", ".join(platforms)}
 
 Rules:
-- Include intent keywords.
-- Use site: filters when helpful (linkedin.com, upwork.com, etc.).
-- For google_maps focus on businesses needing websites.
-- For whatsapp focus on public pages mentioning hiring in groups/communities.
-Return JSON object: platform -> query string. No markdown."""
+- Vary wording across the {n} queries (synonyms, role titles, "looking for", "need", "hire").
+- Use site: filters when useful.
+- Prefer recent hiring language.
+- Avoid queries that mainly find blogs/courses/ads.
+
+Return JSON:
+{{
+  "linkedin": ["q1", "q2", "q3"],
+  ...
+}}
+Only include requested platforms. No markdown."""
         resp = _client().chat.completions.create(
             model=settings.openai_model,
-            temperature=0,
+            temperature=0.2,
             response_format={"type": "json_object"},
             messages=[
                 {
                     "role": "system",
-                    "content": "You write precise public web search queries for genuine hiring leads.",
+                    "content": "You craft precise search queries for genuine hiring leads.",
                 },
                 {"role": "user", "content": prompt},
             ],
         )
-        crafted = json.loads(resp.choices[0].message.content or "{}")
+        raw = json.loads(resp.choices[0].message.content or "{}")
+        for key, val in raw.items():
+            if isinstance(val, list):
+                crafted[key] = [str(x).strip() for x in val if str(x).strip()]
+            elif isinstance(val, str) and val.strip():
+                crafted[key] = [val.strip()]
     except Exception:
         crafted = {}
 
     out: list[tuple[str, str]] = []
     for p in platforms:
-        custom = crafted.get(p) if isinstance(crafted.get(p), str) else None
-        if custom and custom.strip():
-            q = custom.strip()
-        else:
+        queries = crafted.get(p) or []
+        if not queries:
             site = PLATFORM_SITE.get(p, "")
-            if p == "google_maps":
-                q = f'{intent} ("need a website" OR "no website" OR "looking for web developer") business'
-            elif p == "whatsapp":
-                q = f'{intent} (whatsapp OR telegram) (hiring OR "looking for" OR freelance)'
-            else:
-                q = f'{site} {intent} (hiring OR "looking for" OR need OR freelance)'.strip()
-        out.append((p, re.sub(r"\s+", " ", q).strip()))
+            queries = [
+                f'{site} {intent} (hiring OR "looking for" OR need)'.strip(),
+                f'{site} {intent} (freelance OR contractor OR "web developer")'.strip(),
+                f'{site} "{intent}" (hire OR hiring)'.strip(),
+            ]
+        for q in queries[:n]:
+            out.append((p, re.sub(r"\s+", " ", q).strip()))
     return out
 
 
@@ -105,7 +133,7 @@ def _search_brave(query: str, max_results: int) -> list[dict]:
     if not key:
         return []
     headers = {"Accept": "application/json", "X-Subscription-Token": key}
-    with httpx.Client(timeout=30.0) as client:
+    with httpx.Client(timeout=35.0) as client:
         r = client.get(
             "https://api.search.brave.com/res/v1/web/search",
             params={"q": query, "count": max_results},
@@ -127,7 +155,7 @@ def _search_serpapi(query: str, max_results: int) -> list[dict]:
     key = (settings.serpapi_key or "").strip()
     if not key:
         return []
-    with httpx.Client(timeout=30.0) as client:
+    with httpx.Client(timeout=35.0) as client:
         r = client.get(
             "https://serpapi.com/search.json",
             params={"engine": "google", "q": query, "api_key": key, "num": max_results},
@@ -170,7 +198,6 @@ def _search_ddgs(query: str, max_results: int) -> list[dict]:
 
 
 def _search_duckduckgo_html(query: str, max_results: int) -> list[dict]:
-    """Fallback HTML scrape of DuckDuckGo html endpoint."""
     url = "https://html.duckduckgo.com/html/"
     headers = {
         "User-Agent": (
@@ -179,22 +206,18 @@ def _search_duckduckgo_html(query: str, max_results: int) -> list[dict]:
         )
     }
     try:
-        with httpx.Client(timeout=30.0, follow_redirects=True, headers=headers) as client:
+        with httpx.Client(timeout=35.0, follow_redirects=True, headers=headers) as client:
             r = client.post(url, data={"q": query})
             r.raise_for_status()
             html = r.text
     except Exception:
         return []
 
-    # Parse result blocks: uddg redirect links + snippets
-    results = []
-    # links
     link_re = re.compile(
         r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
         re.I | re.S,
     )
     snip_re = re.compile(r'class="result__snippet"[^>]*>(.*?)</(?:a|td|div)', re.I | re.S)
-
     titles_links = link_re.findall(html)
     snippets = snip_re.findall(html)
 
@@ -203,7 +226,6 @@ def _search_duckduckgo_html(query: str, max_results: int) -> list[dict]:
         return re.sub(r"\s+", " ", s).strip()
 
     def unwrap(href: str) -> str:
-        # DuckDuckGo often wraps as //duckduckgo.com/l/?uddg=ENCODED
         m = re.search(r"uddg=([^&]+)", href)
         if m:
             from urllib.parse import unquote
@@ -213,20 +235,15 @@ def _search_duckduckgo_html(query: str, max_results: int) -> list[dict]:
             return "https:" + href
         return href
 
+    results = []
     for i, (href, title) in enumerate(titles_links[:max_results]):
         body = clean(snippets[i]) if i < len(snippets) else ""
-        results.append(
-            {
-                "title": clean(title),
-                "href": unwrap(href),
-                "body": body,
-            }
-        )
+        results.append({"title": clean(title), "href": unwrap(href), "body": body})
     return results
 
 
 def search_web(query: str, max_results: int | None = None) -> list[dict]:
-    n = max_results or settings.discover_max_results
+    n = max_results or 8
     for fn in (_search_brave, _search_serpapi, _search_ddgs, _search_duckduckgo_html):
         try:
             found = fn(query, n)
@@ -237,39 +254,126 @@ def search_web(query: str, max_results: int | None = None) -> list[dict]:
     return []
 
 
+_SPAM_HINTS = re.compile(
+    r"\b(course|tutorial|udemy|guaranteed income|make money fast|followers|crypto pump)\b",
+    re.I,
+)
+
+
+def _looks_weak(text: str) -> bool:
+    if len(text) < 40:
+        return True
+    if _SPAM_HINTS.search(text):
+        return True
+    return False
+
+
 def discover_items(intent: str, platform: str = "all") -> list[DiscoveredItem]:
+    """
+    Deep multi-pass discovery.
+    Paces searches so a full run typically lands in the ~3–5 minute window
+    together with AI classification.
+    """
     queries = build_search_queries(intent, platform)
-    # For "all", fewer per platform to keep total reasonable
-    per_platform = max(
-        3,
-        settings.discover_max_results // max(1, min(len(queries), 4)),
-    )
-    # Limit concurrent platforms when all selected for speed
-    if platform == "all":
-        queries = queries[:5]
+    per_query = max(5, settings.discover_max_results // max(1, len(queries)))
+    pause = max(3.0, float(settings.discover_pause_seconds))
 
     seen_urls: set[str] = set()
+    seen_text: set[str] = set()
     items: list[DiscoveredItem] = []
 
-    for p, query in queries:
-        for row in search_web(query, per_platform):
+    for idx, (p, query) in enumerate(queries):
+        rows = search_web(query, per_query)
+        for row in rows:
             url = (row.get("href") or "").strip()
             title = (row.get("title") or "").strip()
             body = (row.get("body") or "").strip()
+            text = f"{title}\n{body}".strip()
+            key = re.sub(r"\s+", " ", text.lower())[:180]
             if url and url in seen_urls:
+                continue
+            if key in seen_text:
+                continue
+            if _looks_weak(text):
                 continue
             if url:
                 seen_urls.add(url)
-            text = f"{title}\n{body}".strip()
-            if len(text) < 24:
-                continue
+            seen_text.add(key)
             items.append(
-                DiscoveredItem(
-                    text=text,
-                    url=url or None,
-                    source=p,
-                    title=title or None,
-                )
+                DiscoveredItem(text=text, url=url or None, source=p, title=title or None)
             )
 
+        # Pace between query batches (skip after last)
+        if idx < len(queries) - 1:
+            time.sleep(pause)
+
     return items
+
+
+def rerank_matches_with_ai(intent: str, matches: list[dict]) -> list[dict]:
+    """Second-pass genuineness ranking for final accuracy."""
+    if not matches:
+        return matches
+    payload = [
+        {
+            "i": i,
+            "text": (m.get("raw_text") or "")[:500],
+            "score": m.get("genuine_score", 0),
+            "source": m.get("source"),
+        }
+        for i, m in enumerate(matches[:25])
+    ]
+    try:
+        resp = _client().chat.completions.create(
+            model=settings.openai_model,
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You re-rank lead candidates for genuineness vs user intent. "
+                        "Prefer specific hiring asks over generic pages/directories."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"INTENT: {intent}\nCANDIDATES:\n{json.dumps(payload)}\n"
+                        'Return JSON {"order":[best_index_first...], '
+                        '"scores":{"0":0-100,...}}'
+                    ),
+                },
+            ],
+        )
+        data = json.loads(resp.choices[0].message.content or "{}")
+        scores = data.get("scores") or {}
+        for i, m in enumerate(matches[:25]):
+            if str(i) in scores:
+                try:
+                    m["genuine_score"] = float(scores[str(i)])
+                except (TypeError, ValueError):
+                    pass
+        order = data.get("order")
+        if isinstance(order, list) and order:
+            ordered = []
+            used = set()
+            for idx in order:
+                try:
+                    idx_i = int(idx)
+                except (TypeError, ValueError):
+                    continue
+                if 0 <= idx_i < len(matches) and idx_i not in used:
+                    ordered.append(matches[idx_i])
+                    used.add(idx_i)
+            for i, m in enumerate(matches):
+                if i not in used:
+                    ordered.append(m)
+            return ordered
+    except Exception:
+        pass
+    matches.sort(
+        key=lambda r: (r.get("genuine_score", 0), r.get("confidence", 0)),
+        reverse=True,
+    )
+    return matches
