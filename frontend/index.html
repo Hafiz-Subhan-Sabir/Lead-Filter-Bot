@@ -61,16 +61,16 @@
           </div>
 
           <label for="name">Profile name</label>
-          <input id="name" type="text" value="Expert Developer" />
+          <input id="name" type="text" placeholder="e.g. Remote developer hires" value="" />
 
           <label for="intent">Intent</label>
-          <textarea id="intent" rows="3">Looking to hire developers or freelancers for software work, preferably remote, startups welcome</textarea>
+          <textarea id="intent" rows="3" placeholder="Describe exactly what you want to find…"></textarea>
 
           <div class="flags">
-            <label class="check"><input type="checkbox" id="want_remote" checked /> Remote</label>
+            <label class="check"><input type="checkbox" id="want_remote" /> Remote</label>
             <label class="check"><input type="checkbox" id="want_onsite" /> Onsite</label>
-            <label class="check"><input type="checkbox" id="want_hiring" checked /> Hiring</label>
-            <label class="check"><input type="checkbox" id="want_startups" checked /> Startups</label>
+            <label class="check"><input type="checkbox" id="want_hiring" /> Hiring</label>
+            <label class="check"><input type="checkbox" id="want_startups" /> Startups</label>
             <label class="check"><input type="checkbox" id="want_no_website" /> No website</label>
           </div>
 
@@ -82,12 +82,12 @@
             <div>
               <label for="max_hours">Posted within</label>
               <select id="max_hours">
-                <option value="">Any time</option>
+                <option value="" selected>Any time</option>
                 <option value="6">Last 6 hours</option>
                 <option value="12">Last 12 hours</option>
                 <option value="24">Last 24 hours</option>
                 <option value="72">Last 3 days</option>
-                <option value="168" selected>Last 7 days</option>
+                <option value="168">Last 7 days</option>
               </select>
             </div>
           </div>
@@ -110,11 +110,15 @@
           </div>
 
           <label for="paste">Messages</label>
-          <textarea id="paste" rows="10"></textarea>
+          <textarea
+            id="paste"
+            rows="10"
+            placeholder="Paste real posts here. Blank line between each. Optional URL on last line. Optional 6h: time prefix."
+          ></textarea>
 
           <div class="actions">
             <button id="runBtn" type="button">Filter messages</button>
-            <p class="hint" id="hint">Ranks matches by genuineness + confidence.</p>
+            <p class="hint" id="hint">Results appear only after you run a filter.</p>
           </div>
           <p class="error" id="error" hidden></p>
         </section>
@@ -123,28 +127,57 @@
           <div class="results-head">
             <div>
               <h2>Results</h2>
-              <p class="meta" id="summary">Run a filter to see matches here.</p>
+              <p class="meta" id="summary">Waiting for your input…</p>
             </div>
             <div class="source-tag" id="sourceTag">Platform: All Platforms</div>
           </div>
 
-          <div class="toolbar">
-            <label class="check"><input type="checkbox" id="selectAll" /> Select all visible</label>
-            <button type="button" class="ghost-btn" id="inspectBtn" disabled>Inspect selected</button>
-            <button type="button" class="ghost-btn" id="copyEmailsBtn" disabled>Copy emails</button>
+          <div class="loading-panel" id="loadingPanel" hidden>
+            <div class="loading-top">
+              <div class="spinner" aria-hidden="true"></div>
+              <div>
+                <p class="loading-title" id="loadingTitle">Working…</p>
+                <p class="loading-sub" id="loadingSub">Please wait</p>
+              </div>
+            </div>
+            <div class="progress-track">
+              <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <ol class="stage-list" id="stageList">
+              <li data-stage="profile">Saving your intent</li>
+              <li data-stage="scan">Reading pasted posts</li>
+              <li data-stage="ai">AI matching &amp; contact extraction</li>
+              <li data-stage="filters">Applying time / contact filters</li>
+              <li data-stage="rank">Ranking genuine leads</li>
+            </ol>
           </div>
 
-          <div class="tabs">
-            <button class="tab active" data-tab="matches" type="button">
-              Matches <span id="matchCount">0</span>
-            </button>
-            <button class="tab" data-tab="rejected" type="button">
-              Rejected <span id="rejectCount">0</span>
-            </button>
-          </div>
+          <div id="resultsWrap">
+            <div class="empty-state" id="emptyState">
+              <p>No results yet.</p>
+              <p class="muted">Enter intent + paste posts, then hit <strong>Filter messages</strong>.</p>
+            </div>
 
-          <div id="matchesList" class="list"></div>
-          <div id="rejectedList" class="list" hidden></div>
+            <div id="resultsContent" hidden>
+              <div class="toolbar">
+                <label class="check"><input type="checkbox" id="selectAll" /> Select all visible</label>
+                <button type="button" class="ghost-btn" id="inspectBtn" disabled>Inspect selected</button>
+                <button type="button" class="ghost-btn" id="copyEmailsBtn" disabled>Copy emails</button>
+              </div>
+
+              <div class="tabs">
+                <button class="tab active" data-tab="matches" type="button">
+                  Matches <span id="matchCount">0</span>
+                </button>
+                <button class="tab" data-tab="rejected" type="button">
+                  Rejected <span id="rejectCount">0</span>
+                </button>
+              </div>
+
+              <div id="matchesList" class="list"></div>
+              <div id="rejectedList" class="list" hidden></div>
+            </div>
+          </div>
         </section>
       </main>
     </div>

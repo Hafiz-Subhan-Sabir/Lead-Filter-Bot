@@ -12,8 +12,17 @@ const PLATFORM_LABELS = {
   other: "Other / Paste",
 };
 
+const STAGES = [
+  { id: "profile", title: "Saving your intent", sub: "Creating filter profile…", pct: 12 },
+  { id: "scan", title: "Reading pasted posts", sub: "Splitting messages & links…", pct: 28 },
+  { id: "ai", title: "AI matching & contacts", sub: "Classifying each post…", pct: 62 },
+  { id: "filters", title: "Applying filters", sub: "Time + contact rules…", pct: 82 },
+  { id: "rank", title: "Ranking genuine leads", sub: "Sorting final results…", pct: 96 },
+];
+
 let itemIndex = {};
 const selectedIds = new Set();
+let stageTimer = null;
 
 const apiStatus = $("apiStatus");
 const errorEl = $("error");
@@ -33,6 +42,12 @@ const inspectBtn = $("inspectBtn");
 const copyEmailsBtn = $("copyEmailsBtn");
 const drawer = $("drawer");
 const drawerBody = $("drawerBody");
+const loadingPanel = $("loadingPanel");
+const emptyState = $("emptyState");
+const resultsContent = $("resultsContent");
+const progressBar = $("progressBar");
+const loadingTitle = $("loadingTitle");
+const loadingSub = $("loadingSub");
 
 function currentPlatform() {
   return platformInput.value || "all";
@@ -96,9 +111,58 @@ async function readError(res) {
     return JSON.stringify(data.detail || data);
   } catch {
     if (text.includes("Internal Server Error")) {
-      return "Server error 500. Check OpenAI key / PythonAnywhere error log. Retry after reload.";
+      return "Server error 500. Check API key / server logs, then retry.";
     }
     return text.slice(0, 300) || `HTTP ${res.status}`;
+  }
+}
+
+function setStage(stageId) {
+  const stage = STAGES.find((s) => s.id === stageId) || STAGES[0];
+  loadingTitle.textContent = stage.title;
+  loadingSub.textContent = stage.sub;
+  progressBar.style.width = `${stage.pct}%`;
+
+  document.querySelectorAll("#stageList li").forEach((li) => {
+    const id = li.dataset.stage;
+    li.classList.remove("active", "done");
+    const idx = STAGES.findIndex((s) => s.id === id);
+    const cur = STAGES.findIndex((s) => s.id === stageId);
+    if (idx < cur) li.classList.add("done");
+    if (idx === cur) li.classList.add("active");
+  });
+}
+
+function startLoadingVisual() {
+  emptyState.hidden = true;
+  resultsContent.hidden = true;
+  loadingPanel.hidden = false;
+  progressBar.style.width = "8%";
+  setStage("profile");
+
+  let i = 0;
+  clearInterval(stageTimer);
+  // Visual stage advance while waiting on network (AI is the slow part)
+  stageTimer = setInterval(() => {
+    i = Math.min(i + 1, STAGES.length - 2); // stop before final until real done
+    setStage(STAGES[i].id);
+  }, 1400);
+}
+
+function finishLoadingVisual() {
+  clearInterval(stageTimer);
+  stageTimer = null;
+  setStage("rank");
+  progressBar.style.width = "100%";
+}
+
+function stopLoadingVisual(showEmpty) {
+  clearInterval(stageTimer);
+  stageTimer = null;
+  loadingPanel.hidden = true;
+  if (showEmpty) {
+    emptyState.hidden = false;
+    resultsContent.hidden = true;
   }
 }
 
@@ -245,8 +309,12 @@ function renderResults(data) {
   rejectCount.textContent = String(rejected.length);
   summary.textContent = `${data.total_items} scanned · ${matches.length} match · ${rejected.length} rejected${filteredOut ? ` · ${filteredOut} failed filters` : ""}`;
 
+  emptyState.hidden = true;
+  resultsContent.hidden = false;
+  loadingPanel.hidden = true;
+
   if (!matches.length) {
-    matchesList.innerHTML = `<p class="empty">No matches. Tip: turn off “Must have email/phone/name” if posts lack contacts.</p>`;
+    matchesList.innerHTML = `<p class="empty">No matches for this input/filters.</p>`;
   } else {
     matches.forEach((m) => matchesList.appendChild(renderCard(m, true)));
   }
@@ -310,9 +378,6 @@ $("drawerBackdrop").addEventListener("click", closeDrawer);
 
 async function runFilter() {
   showError("");
-  runBtn.disabled = true;
-  $("hint").textContent = "Running filter…";
-
   const profilePayload = {
     name: $("name").value.trim() || "Untitled",
     intent: $("intent").value.trim(),
@@ -329,17 +394,21 @@ async function runFilter() {
   const maxHoursRaw = $("max_hours").value;
 
   if (!profilePayload.intent) {
-    showError("Write your intent.");
-    runBtn.disabled = false;
+    showError("Enter your intent first.");
     return;
   }
   if (!paste) {
-    showError("Paste at least one message.");
-    runBtn.disabled = false;
+    showError("Paste real posts before filtering.");
     return;
   }
 
+  runBtn.disabled = true;
+  $("hint").textContent = "Filtering in progress…";
+  summary.textContent = "Working on your posts…";
+  startLoadingVisual();
+
   try {
+    setStage("profile");
     const profileRes = await fetch("/profiles", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -348,6 +417,10 @@ async function runFilter() {
     if (!profileRes.ok) throw new Error(await readError(profileRes));
     const profile = await profileRes.json();
 
+    setStage("scan");
+    await new Promise((r) => setTimeout(r, 250));
+
+    setStage("ai");
     const filterRes = await fetch("/filter/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -362,10 +435,17 @@ async function runFilter() {
       }),
     });
     if (!filterRes.ok) throw new Error(await readError(filterRes));
+
+    setStage("filters");
     const data = await filterRes.json();
+
+    finishLoadingVisual();
+    await new Promise((r) => setTimeout(r, 350));
     renderResults(data);
-    $("hint").textContent = `Done · Profile #${profile.id}`;
+    $("hint").textContent = `Done · ${data.matches?.length || 0} match(es)`;
   } catch (err) {
+    stopLoadingVisual(true);
+    summary.textContent = "Waiting for your input…";
     showError(err.message || "Something went wrong");
     $("hint").textContent = "Fix the error and try again.";
   } finally {
@@ -375,14 +455,10 @@ async function runFilter() {
 
 runBtn.addEventListener("click", runFilter);
 
-$("paste").value = `6h: Looking for a React developer for our startup, remote, start next week. Contact Sara Ahmed at sara.ahmed@startup.io or +92 300 1234567
-https://www.linkedin.com/posts/example-react-hire
-
-12h: Anyone selling Instagram followers cheap? Easy money guaranteed.
-https://www.linkedin.com/posts/example-spam
-
-2d: Need someone onsite in Lahore to fix AC unit tomorrow morning. Call 042-111222333
-https://www.linkedin.com/posts/example-ac`;
+// No predefined posts / intent — user must type everything
+$("paste").value = "";
+$("intent").value = "";
+$("name").value = "";
 
 setPlatform("all");
 checkHealth();

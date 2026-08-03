@@ -376,6 +376,108 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .no-link { color: var(--warn); font-size: 0.78rem; }
 .empty { color: var(--muted); padding: 0.8rem 0.2rem; }
 
+.empty-state {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--text);
+}
+.empty-state p { margin: 0.35rem 0; }
+.empty-state .muted { color: var(--muted); font-size: 0.9rem; }
+
+.loading-panel {
+  margin: 0.85rem 0 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.loading-top {
+  display: flex;
+  gap: 0.85rem;
+  align-items: center;
+}
+
+.spinner {
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 50%;
+  border: 3px solid rgba(240, 180, 41, 0.2);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-title {
+  margin: 0;
+  font-weight: 800;
+  font-size: 0.98rem;
+}
+
+.loading-sub {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.progress-track {
+  margin: 0.9rem 0 0.85rem;
+  height: 8px;
+  border-radius: 999px;
+  background: #0f1728;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.progress-bar {
+  height: 100%;
+  width: 8%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e0a41a, #ffd056);
+  transition: width 0.45s ease;
+}
+
+.stage-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.stage-list li {
+  font-size: 0.84rem;
+  color: var(--muted);
+  padding: 0.35rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+
+.stage-list li.active {
+  color: var(--text);
+  border-color: var(--accent-dim);
+  background: rgba(240, 180, 41, 0.1);
+  font-weight: 700;
+}
+
+.stage-list li.done {
+  color: var(--ok);
+}
+
+.stage-list li.done::before {
+  content: "✓ ";
+}
+
+.stage-list li.active::before {
+  content: "● ";
+  color: var(--accent);
+}
+
 .drawer[hidden] { display: none; }
 .drawer { position: fixed; inset: 0; z-index: 40; }
 .drawer-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.55); }
